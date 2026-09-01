@@ -1,0 +1,67 @@
+def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
+    global target_heading
+    motor_esq.reset_angle(0)
+    motor_dir.reset_angle(0)
+
+    if distancia_graus < 1:
+        distancia_graus = abs(distancia_graus)
+        velocidade_base = -abs(velocidade_base)
+
+    erro_anterior = 0.0
+    integral = 0.0
+
+    # Configurações de zonas de velocidade (Ajustáveis)
+    zona_aceleracao = distancia_graus * 0.20   # Primeiros 20% do trajeto acelerando
+    zona_deceleracao = distancia_graus * 0.75 # A partir de 75% do trajeto desacelerando
+    velocidade_inicial = velocidade_base * 0.5 # Começa com 30% da velocidade base
+    velocidade_final = velocidade_base * 0.6   # Termina com 25% da velocidade base
+
+    while abs(motor_esq.angle()) < distancia_graus:
+        verificar_voltar_menu()
+        graus_atuais = abs(motor_esq.angle())
+
+        # 1. ZONA DE ACELERAÇÃO
+        if graus_atuais < zona_aceleracao:
+            proporcao = graus_atuais / zona_aceleracao
+            vel_alvo = velocidade_inicial + (velocidade_base - velocidade_inicial) * proporcao
+        # 2. ZONA DE DESACELERACÃO
+        elif graus_atuais > zona_deceleracao:
+            graus_dentro_da_decel = graus_atuais - zona_deceleracao
+            distancia_total_decel = distancia_graus - zona_deceleracao
+            proporcao_decel = 1.0 - (graus_dentro_da_decel / distancia_total_decel)
+            # Garante que a proporção não negative por erro de leitura de passos
+            proporcao_decel = max(0.0, min(1.0, proporcao_decel))
+            vel_alvo = velocidade_final + (velocidade_base - velocidade_final) * proporcao_decel
+        # 3. ZONA DE CRUZEIRO (Velocidade Máxima Estabilizada)
+        else:
+            vel_alvo = velocidade_base
+
+        # PID de Estabilização Linear
+        angulo_atual = hub.imu.heading()
+        erro = (target_heading - angulo_atual + 180) % 360 - 180
+        integral += erro
+        if abs(erro) > 8:
+            integral = 0
+
+        derivada = erro - erro_anterior
+        erro_anterior = erro
+
+        correcao = (erro * KP_LINE) + (integral * KI_LINE) + (derivada * KD_LINE)
+
+        motor_esq.run(vel_alvo + correcao)
+        motor_dir.run(vel_alvo - correcao)
+
+        print("[POSSIBILIDADE B] T:{}ms | Progresso: {}/{} | VelAlvo: {:.1f} | GiroErro: {}".format(
+            relogio_global.time(), graus_atuais, distancia_graus, vel_alvo, erro
+        ))
+
+        if usar_sensores_parada:
+            if sensor_meio.reflection() < 18 or sensor_direita.reflection() < 18:
+                print("[SENSOR ALERTA B]: Linha detectada. Forçando parada.")
+                break
+
+        wait(5)
+
+    motor_esq.hold()
+    motor_dir.hold()
+    wait(10)
