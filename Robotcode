@@ -24,8 +24,8 @@ KI_LINE = 0.01
 KD_LINE = 1.8
 
 # Coeficientes PID para a nova rotina de giro integrado
-KP_TURN = 8
-KD_TURN = 4
+KP_TURN = 7.5
+KD_TURN = 3
 
 
 class VoltarMenu(Exception):
@@ -225,10 +225,10 @@ def R5():
 
 def R1():
     inicial()
-    mover(536, 700)
+    mover(537, 700)
     girar(45, 700)
-    mover(400, 700)
-    auxD(240)
+    mover(380, 700)
+    auxD(230)
     mover(-800, 900)
 
 def R2():
@@ -245,7 +245,7 @@ def R2():
     esperar(10)
     girar(0, 600)
     mover(150, 600)
-    auxD(-800, 700)
+    auxD(-750, 700)
     mover(-5, 300)
     girar(10, 300)
     auxD(-59)
@@ -253,6 +253,14 @@ def R2():
     esperar(300)
     mover(35, 100)
     auxD(600, 800)
+    mover(-100, 800)
+    girar(-90, 900)
+    mover(-450, 900)
+    girar(0, 900)
+    mover(1230, 900)
+    girar(50, 700)
+    mover(-400, 800)
+    mover(400, 800)
     
 
     
