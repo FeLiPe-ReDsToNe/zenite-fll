@@ -1,0 +1,46 @@
+def girar(graus, velocidade_maxima):
+    global target_heading
+    atualizar_target_heading(graus)
+
+    erro_anterior = 0.0
+    cronometro = StopWatch()
+
+    while True:
+        verificar_voltar_menu()
+
+        angulo_atual = hub.imu.heading()
+
+        erro = (target_heading - angulo_atual + 180) % 360 - 180
+
+        if abs(erro) < 0.6 and abs(motor_esq.speed()) < 12:
+            break
+
+        tempo = cronometro.time()
+        cronometro.reset()
+
+        if tempo > 0:
+            derivada = (erro - erro_anterior) / tempo
+        else:
+            derivada = 0
+
+        erro_anterior = erro
+
+        sinal_controle = (erro * KP_TURN) + (derivada * KD_TURN)
+
+        if sinal_controle > velocidade_maxima:
+            sinal_controle = velocidade_maxima
+        elif sinal_controle < -velocidade_maxima:
+            sinal_controle = -velocidade_maxima
+
+        if abs(sinal_controle) < 25 and abs(erro) >= 0.8:
+            sinal_controle = 25 if erro > 0 else -25
+
+        motor_esq.run(sinal_controle)
+        motor_dir.run(-sinal_controle)
+
+        wait(5)
+
+    motor_esq.stop()
+    motor_dir.stop()
+
+    print('[MUNDO FÍSICO]: Rotação concluída e estabilizada em {}°'.format(hub.imu.heading()))
