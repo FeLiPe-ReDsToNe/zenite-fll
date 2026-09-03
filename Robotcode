@@ -238,7 +238,7 @@ def R2():
     mover(-40, 600)
     girar(-63, 900)
     girar(0, 900)
-    mover(-385, 900)
+    mover(-35, 900)
     girar(-90, 800)
     mover(-200, 700)
     mover(1150, 800)
@@ -253,15 +253,16 @@ def R2():
     esperar(300)
     mover(35, 100)
     auxD(600, 800)
-    mover(-90, 800)
+    mover(-80, 800)
     girar(-90, 900)
-    mover(-450, 900)
+    mover(-430, 900)
     girar(0, 900)
-    mover(1220, 900)
-    girar(50, 700)
-    mover(-400, 800)
-    mover(400, 800)
-    
+    mover(900, 900)
+    girar(53, 700)
+    mover(-100, 800)
+    auxE(-800, 900)
+    girar(48, 700)
+    auxE(900, 900)
 
     
 def R3():
