@@ -24,8 +24,8 @@ KI_LINE = 0.01
 KD_LINE = 1.8
 
 # Coeficientes PID para a nova rotina de giro integrado
-KP_TURN = 7.5
-KD_TURN = 3
+KP_TURN = 7
+KD_TURN = 4
 
 
 class VoltarMenu(Exception):
@@ -82,7 +82,7 @@ def girar(graus, velocidade_maxima):
 
         erro = (target_heading - angulo_atual + 180) % 360 - 180
 
-        if abs(erro) < 0.6 and abs(motor_esq.speed()) < 12:
+        if abs(erro) < 0.7 and abs(motor_esq.speed()) < 12:
             break
 
         tempo = cronometro.time()
@@ -227,8 +227,8 @@ def R1():
     inicial()
     mover(537, 700)
     girar(45, 700)
-    mover(380, 700)
-    auxD(230)
+    mover(390, 700)
+    auxD(210)
     mover(-800, 900)
 
 def R2():
@@ -238,31 +238,34 @@ def R2():
     mover(-40, 600)
     girar(-63, 900)
     girar(0, 900)
-    mover(-35, 900)
+    mover(-345, 900)
     girar(-90, 800)
     mover(-200, 700)
     mover(1150, 800)
     esperar(10)
     girar(0, 600)
-    mover(150, 600)
-    auxD(-725, 700)
+    mover(130, 600)
+    auxD(-765,900)
     mover(-5, 300)
     girar(10, 300)
     auxD(-59)
-    mover(-37, 200)
+    mover(-43, 200)
     esperar(300)
     mover(35, 100)
     auxD(600, 800)
-    mover(-80, 800)
+    mover(-85, 800)
     girar(-90, 900)
     mover(-430, 900)
     girar(0, 900)
-    mover(900, 900)
+    mover(913, 900)
     girar(53, 700)
-    mover(-100, 800)
+    mover(-160, 800)
     auxE(-800, 900)
-    girar(48, 700)
-    auxE(900, 900)
+    girar(60, 700)
+    mover(100, 600)
+    auxE(600, 900)
+    girar(20, 900)
+    mover(1000, 900)
 
     
 def R3():
