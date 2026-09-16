@@ -1,0 +1,102 @@
+🔴 1. Provar que a hipóxia é um problema relevante
+
+Encontrar evidências de baixo oxigênio em manguezais.
+Preferencialmente encontrar dados do Vale do Itajaí/Itajaí-Açu.
+Descobrir em quais condições o O₂ cai: maré, chuva, matéria orgânica, pouca circulação etc.
+
+🔴 2. Definir qual é o nível de O₂ que dispara o sistema
+
+Não podemos simplesmente escolher "abaixo de X = liga".
+O valor precisa ter justificativa científica.
+Também precisamos evitar ligar/desligar toda hora.
+
+🔴 3. Descobrir onde medir
+
+Água superficial?
+Água próxima ao sedimento?
+Entre as raízes?
+Em diferentes profundidades?
+
+Isso é especialmente importante porque o oxigênio pode variar bastante dentro do manguezal.
+
+🔴 4. Evitar que o aerador trate apenas o sintoma
+Precisamos investigar a causa da hipóxia.
+
+Por exemplo:
+
+matéria orgânica → decomposição → consumo de O₂ → hipóxia
+
+Se a causa continuar, simplesmente adicionar oxigênio pode não resolver o problema permanentemente.
+
+🟠 5. Dimensionar o difusor
+Precisamos descobrir:
+
+tamanho do disco;
+quantidade de ar;
+tamanho das bolhas;
+profundidade;
+área que consegue oxigenar;
+tempo necessário para aumentar o O₂.
+
+Essa provavelmente será uma das partes mais importantes do protótipo.
+
+🟠 6. Evitar oxigenação excessiva
+O objetivo não deve ser:
+
+"quanto mais oxigênio, melhor."
+
+O sistema deve fornecer somente o necessário.
+
+🟠 7. Não prejudicar o sedimento
+As bolhas podem movimentar a água e eventualmente ressuspender partículas.
+
+Precisamos testar se isso acontece e em que intensidade.
+
+🟠 8. Não prejudicar os animais
+O equipamento precisa ser seguro para:
+
+peixes;
+camarões;
+caranguejos;
+moluscos;
+organismos pequenos.
+
+Também precisamos pensar no próprio disco e nas mangueiras como possíveis obstáculos.
+
+🟠 9. Lidar com água salgada/salobra
+O equipamento precisa resistir à corrosão e funcionar em condições de salinidade variável.
+
+🟡 10. Energia
+De onde vem a energia?
+
+Possibilidades para pesquisar:
+
+energia solar;
+bateria;
+sistema híbrido.
+
+E o consumo precisa ser calculado.
+
+🟡 11. Manutenção
+O difusor pode acumular:
+
+biofilme;
+algas;
+sedimentos;
+matéria orgânica.
+
+Precisamos descobrir com que frequência ele precisaria ser limpo.
+
+🟡 12. Maré
+Esse é um problema muito interessante para vocês.
+
+A água pode mudar de direção e nível.
+
+Precisamos descobrir como o sistema continuará funcionando durante:
+
+maré baixa → enchente → maré alta → vazante
+
+🟡 13. Posicionamento
+Talvez não seja necessário colocar aeradores em todo o manguezal.
+
+Podemos procurar uma estratégia de aeração localizada, colocando o equipamento somente nos pontos em que o sensor detecta hipóxia.
