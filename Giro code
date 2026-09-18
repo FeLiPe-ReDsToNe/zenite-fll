@@ -12,14 +12,14 @@ def girar(graus, velocidade_maxima):
 
         erro = (target_heading - angulo_atual + 180) % 360 - 180
 
-        if abs(erro) < 0.6 and abs(motor_esq.speed()) < 12:
+        if abs(erro) < 0.5 and abs(motor_esq.speed()) < 17:
             break
 
         tempo = cronometro.time()
         cronometro.reset()
 
         if tempo > 0:
-            derivada = (erro - erro_anterior) / tempo
+            derivada = (erro - erro_anterior) / (tempo / 1000)
         else:
             derivada = 0
 
@@ -32,11 +32,14 @@ def girar(graus, velocidade_maxima):
         elif sinal_controle < -velocidade_maxima:
             sinal_controle = -velocidade_maxima
 
+
         if abs(sinal_controle) < 25 and abs(erro) >= 0.8:
             sinal_controle = 25 if erro > 0 else -25
 
-        motor_esq.run(sinal_controle)
-        motor_dir.run(-sinal_controle)
+        print(erro)
+
+        motor_esq.run(-sinal_controle)
+        motor_dir.run(sinal_controle)
 
         wait(5)
 
