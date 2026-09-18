@@ -1,3 +1,135 @@
+from pybricks.hubs import PrimeHub
+from pybricks.pupdevices import Motor, ColorSensor
+from pybricks.parameters import Port, Direction, Stop, Button, 
+from pybricks.tools import StopWatch, wait
+
+
+hub = PrimeHub()
+
+motor_esq = Motor(Port.B, Direction.CLOCKWISE)
+motor_dir = Motor(Port.A, Direction.COUNTERCLOCKWISE) 
+
+motor_aux_esq = Motor(Port.C)
+motor_aux_dir = Motor(Port.D)
+
+
+relogio_global = StopWatch()
+target_heading = 0.0  
+
+
+KP_LINE = 5
+KI_LINE = 0.01
+KD_LINE = 2
+
+
+KP_TURN = 11
+KD_TURN = 1.5
+
+class VoltarMenu(Exception):
+    pass
+
+
+def parar_todos_motores():
+    motor_esq.stop()
+    motor_dir.stop()
+    motor_aux_esq.stop()
+    motor_aux_dir.stop()
+
+def esperar_soltar_botoes():
+    while hub.buttons.pressed():
+        wait(10)
+
+def verificar_voltar_menu():
+    if Button.CENTER in hub.buttons.pressed():
+        parar_todos_motores()
+        esperar_soltar_botoes()
+        raise VoltarMenu
+
+
+def run_angle_interrompivel(motor, velocidade, angulo):
+    motor.run_angle(velocidade, angulo, then=Stop.HOLD, wait=False)
+
+    while not motor.done():
+        verificar_voltar_menu()
+        wait(10)
+
+
+def run_until_stalled_interrompivel(motor, velocidade):
+    motor.run(velocidade)
+
+    while not motor.stalled():
+        verificar_voltar_menu()
+        wait(10)
+
+    motor.stop()
+
+
+def atualizar_target_heading(novo_angulo):
+    global target_heading
+    target_heading = float(novo_angulo)
+
+def erro_angular(alvo, atual):
+    return (alvo - atual + 180) % 360 - 180
+
+
+def limitar(valor, minimo, maximo):
+    if valor < minimo:
+        return minimo
+    if valor > maximo:
+        return maximo
+    return valor
+
+
+def girar(graus, velocidade_maxima):
+    global target_heading
+    atualizar_target_heading(graus)
+
+    erro_anterior = 0.0
+    cronometro = StopWatch()
+
+    while True:
+        verificar_voltar_menu()
+
+        angulo_atual = hub.imu.heading()
+
+        erro = (target_heading - angulo_atual + 180) % 360 - 180
+
+        if abs(erro) < 0.6 and abs(motor_esq.speed()) < 12:
+            break
+
+        tempo = cronometro.time()
+        cronometro.reset()
+
+        if tempo > 0:
+            derivada = (erro - erro_anterior) / (tempo / 1000)
+        else:
+            derivada = 0
+
+        erro_anterior = erro
+
+        sinal_controle = (erro * KP_TURN) + (derivada * KD_TURN)
+
+        if sinal_controle > velocidade_maxima:
+            sinal_controle = velocidade_maxima
+        elif sinal_controle < -velocidade_maxima:
+            sinal_controle = -velocidade_maxima
+
+
+        if abs(sinal_controle) < 35 and abs(erro) >= 0.6:
+            sinal_controle = 35 if erro > 0 else -35
+
+        print(erro)
+
+        motor_esq.run(-sinal_controle)
+        motor_dir.run(sinal_controle)
+
+        wait(5)
+
+    motor_esq.stop()
+    motor_dir.stop()
+
+    print('[MUNDO FÍSICO]: Rotação concluída e estabilizada em {}°'.format(hub.imu.heading()))
+
 def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
     global target_heading
     motor_esq.reset_angle(0)
@@ -65,3 +197,144 @@ def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
     motor_esq.hold()
     motor_dir.hold()
     wait(10)
+
+
+
+def auxD(posicao,velocidade=-400):
+    print(velocidade )
+    if posicao == "inicio":
+        run_until_stalled_interrompivel(motor_aux_esq, velocidade)
+        wait(100)
+    else:
+        posicao = int(posicao)
+        run_angle_interrompivel(motor_aux_esq, velocidade, posicao)
+
+def auxE(posicao,velocidade=-400):
+    if posicao == "inicio":
+        run_until_stalled_interrompivel(motor_aux_dir, -400)
+        wait(100)
+    else:
+        posicao = int(posicao)
+        run_angle_interrompivel(motor_aux_dir, 350, posicao)
+
+def inicial():
+    hub.imu.reset_heading(0)
+    atualizar_target_heading(0)
+def esperar(tempo):
+    for _ in range(tempo):
+        verificar_voltar_menu()
+        wait(10)
+
+def R5():
+    inicial()
+    girar(90, 700)
+
+def R1():
+    inicial()
+    mover(1067, 800)
+    auxD(-500, 900)
+    mover(-1067, 800)
+
+def R2():
+    inicial()
+    mover(1147, 700)
+    mover(-464, 800)
+    girar(90, 800)
+    mover(-200, 700)
+    mover(1150, 800)
+    esperar(10)
+    girar(0, 600)
+    mover(130, 600)
+    auxD(-100, 600)
+    auxD(-635,900)
+    mover(-5, 300)
+    girar(10, 300)
+    mover(-43, 200)
+    esperar(300)
+    mover(35, 100)
+    auxD(100, 300)
+    auxD(500, 800)
+    mover(-85, 800)
+    girar(-90, 900)
+    mover(-430, 900)
+    girar(0, 900)
+    mover(646, 800)
+    auxE(-600, 900)
+    mover(130, 800)
+    girar(20, 700)
+    mover(160, 800)
+    auxE(600, 900)
+    girar(20, 700)
+    mover(1600, 600)
+
+    
+def R3():
+    inicial()
+    mover(387, 467)
+    girar(90, 670)
+    mover(470, 500)
+    mover(250, 1000)
+    mover(-500, 1000)
+    girar(30, 1000)
+    mover(-1000, 1000)
+
+def R4():
+    inicial()
+    auxD(90)
+
+OPCOES_MENU = (
+    ("R1", R1),
+    ("R2", R2),
+    ("R3", R3),
+    ("R4", R4),
+    ("R5", R5),
+)
+
+
+def mostrar_opcao(indice):
+    # O display mostra o numero da rotina selecionada.
+    hub.display.number(indice + 1)
+    print("Selecionado:", OPCOES_MENU[indice][0])
+
+
+def menu():
+    indice = 0
+    hub.speaker.beep(500, 50)
+    hub.system.set_stop_button(None)
+    mostrar_opcao(indice)
+    esperar_soltar_botoes()
+
+    while True:
+        botoes = hub.buttons.pressed()
+
+        if Button.LEFT in botoes:
+            indice = (indice + 1) % len(OPCOES_MENU)
+            mostrar_opcao(indice)
+            esperar_soltar_botoes()
+
+        elif Button.RIGHT in botoes:
+            nome, rotina = OPCOES_MENU[indice]
+            esperar_soltar_botoes()
+            hub.display.char("P")
+            hub.system.set_stop_button(None)
+            print("Iniciando:", nome)
+            try:
+                rotina()
+                hub.speaker.beep(700, 50)
+            except VoltarMenu:
+                parar_todos_motores()
+                hub.speaker.beep(300, 80)
+                print("Rotina interrompida. Voltando ao menu.")
+            mostrar_opcao(indice)
+
+        elif Button.CENTER in botoes:
+            parar_todos_motores()
+            hub.system.set_stop_button(None)
+            hub.display.char("S")
+            esperar_soltar_botoes()
+            mostrar_opcao(indice)
+
+        wait(30)
+
+
+menu()
