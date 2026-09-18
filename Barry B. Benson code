@@ -1,433 +1,273 @@
-# BASE ZENTIE FLL / PYBRICKS
-#
-# Deslocamentos: graus medios dos encoders dos motores A e B.
-# Giros: graus da IMU do hub, sempre referidos a orientacao inicial da rotina.
-
 from pybricks.hubs import PrimeHub
-from pybricks.pupdevices import Motor
-from pybricks.parameters import Button, Direction, Port, Stop
+from pybricks.pupdevices import Motor, ColorSensor
+from pybricks.parameters import Port, Direction, Stop, Button, 
 from pybricks.tools import StopWatch, wait
 
 
-# CONFIGURACAO ORIGINAL DO ROBO ZENTIE
 hub = PrimeHub()
-motor_esq = Motor(Port.A, Direction.COUNTERCLOCKWISE)
-motor_dir = Motor(Port.B, Direction.CLOCKWISE)
+
+motor_esq = Motor(Port.B, Direction.CLOCKWISE)
+motor_dir = Motor(Port.A, Direction.COUNTERCLOCKWISE) 
+
 motor_aux_esq = Motor(Port.C)
 motor_aux_dir = Motor(Port.D)
 
-LIMITE_MOTOR = 1000       # graus/s: protege contra valores acima do motor.
-ACELERACAO_MOTOR = 4000   # graus/s^2: limite interno dos motores.
-motor_esq.control.limits(speed=LIMITE_MOTOR, acceleration=ACELERACAO_MOTOR)
-motor_dir.control.limits(speed=LIMITE_MOTOR, acceleration=ACELERACAO_MOTOR)
 
 relogio_global = StopWatch()
+target_heading = 0.0  
 
-# Referencia global de orientacao. girar(90) sempre aponta para 90 graus.
-angulo_alvo = 0.0
 
-# Ganhos da estabilizacao de direcao durante mover().
-KP_LINE = 4.5
+KP_LINE = 5
 KI_LINE = 0.01
-KD_LINE = 1.2
+KD_LINE = 1.8
 
-# tipo, alvo, realizado, erro, angulo_alvo, angulo_final, erro_angulo, tempo_ms
-log_movimentos = []
 
+KP_TURN = 5
+KD_TURN = 3
 
 class VoltarMenu(Exception):
     pass
 
 
+def parar_todos_motores():
+    motor_esq.stop()
+    motor_dir.stop()
+    motor_aux_esq.stop()
+    motor_aux_dir.stop()
+
 def esperar_soltar_botoes():
     while hub.buttons.pressed():
         wait(10)
 
-
-def parar_todos_motores():
-    motor_esq.brake()
-    motor_dir.brake()
-    motor_aux_esq.brake()
-    motor_aux_dir.brake()
-
-
 def verificar_voltar_menu():
-    """CENTRO interrompe uma rotina, inclusive dentro dos controladores."""
     if Button.CENTER in hub.buttons.pressed():
         parar_todos_motores()
         esperar_soltar_botoes()
-        raise VoltarMenu()
+        raise VoltarMenu
 
 
-def limitar(valor, limite):
-    return max(-limite, min(valor, limite))
+def run_angle_interrompivel(motor, velocidade, angulo):
+    motor.run_angle(velocidade, angulo, then=Stop.HOLD, wait=False)
 
+    while not motor.done():
+        verificar_voltar_menu()
+        wait(10)
+
+
+def run_until_stalled_interrompivel(motor, velocidade):
+    motor.run(velocidade)
+
+    while not motor.stalled():
+        verificar_voltar_menu()
+        wait(10)
+
+    motor.stop()
+
+
+def atualizar_target_heading(novo_angulo):
+    global target_heading
+    target_heading = float(novo_angulo)
 
 def erro_angular(alvo, atual):
-    """Menor erro entre dois angulos; preserva angulo_alvo como valor global."""
     return (alvo - atual + 180) % 360 - 180
 
 
-def rampa(atual, desejada, aceleracao, desaceleracao, dt):
-    """Limita a mudanca de velocidade para reduzir derrapagem e inercia."""
-    taxa = desaceleracao if abs(desejada) < abs(atual) or atual * desejada < 0 else aceleracao
-    return atual + limitar(desejada - atual, taxa * dt)
+def limitar(valor, minimo, maximo):
+    if valor < minimo:
+        return minimo
+    if valor > maximo:
+        return maximo
+    return valor
 
 
-def pid(erro, erro_anterior, integral, derivada, dt, kp, ki, kd, limite,
-        erro_eh_angular=False):
-    """PID com derivada filtrada e integral limitada contra saturacao."""
-    # Em giros, -179 para +179 representa apenas 2 graus, nao 358 graus.
-    if erro_eh_angular:
-        delta_erro = erro_angular(erro, erro_anterior)
-    else:
-        delta_erro = erro - erro_anterior
-    derivada_bruta = delta_erro / dt
-    derivada += dt / (0.04 + dt) * (derivada_bruta - derivada)
-    tentativa_integral = integral
-    if ki != 0 and abs(erro) < 12:
-        tentativa_integral = limitar(integral + erro * dt, 30)
-    saida_sem_i = kp * erro + kd * derivada
-    saida = saida_sem_i + ki * tentativa_integral
-    if abs(saida) <= limite:
-        integral = tentativa_integral
-    return limitar(saida_sem_i + ki * integral, limite), integral, derivada
+def girar(graus, velocidade_maxima):
+    global target_heading
+    atualizar_target_heading(graus)
 
+    erro_anterior = 0.0
+    cronometro = StopWatch()
 
-def comandar_rodas(velocidade, correcao):
-    """Velocidades em graus/s; correcao positiva acelera a roda esquerda."""
-    motor_esq.run(limitar(velocidade + correcao, LIMITE_MOTOR))
-    motor_dir.run(limitar(velocidade - correcao, LIMITE_MOTOR))
-
-
-def registrar_movimento(tipo, alvo, realizado, erro, alvo_angulo,
-                         angulo_final, erro_angulo, inicio):
-    log_movimentos.append((tipo, alvo, realizado, erro, alvo_angulo,
-                           angulo_final, erro_angulo,
-                           relogio_global.time() - inicio))
-
-
-def mostrar_log():
-    print("tipo,alvo,realizado,erro,angulo_alvo,angulo_final,erro_angulo,tempo_ms")
-    for linha in log_movimentos:
-        print(*linha, sep=",")
-
-
-def limpar_log():
-    log_movimentos.clear()
-
-
-def conferir_seguranca(inicio, tempo_limite, verificar_esq=True,
-                       verificar_dir=True):
-    verificar_voltar_menu()
-    if relogio_global.time() - inicio >= tempo_limite:
-        parar_todos_motores()
-        raise RuntimeError("O movimento demorou demais")
-    if verificar_esq and motor_esq.stalled():
-        parar_todos_motores()
-        raise RuntimeError("A roda esquerda travou")
-    if verificar_dir and motor_dir.stalled():
-        parar_todos_motores()
-        raise RuntimeError("A roda direita travou")
-
-
-def atualizar_angulo_alvo(novo_angulo):
-    global angulo_alvo
-    angulo_alvo = float(novo_angulo)
-
-
-def inicial(parado_ms=500, tempo_limite=5000):
-    """Cria a referencia global 0 graus somente quando a IMU estiver estavel."""
-    global angulo_alvo
-    parar_todos_motores()
-    inicio = relogio_global.time()
-    parado_desde = inicio
     while True:
         verificar_voltar_menu()
-        agora = relogio_global.time()
-        if agora - inicio >= tempo_limite:
-            raise RuntimeError("Deixe o robo parado para zerar a IMU")
-        if not hub.imu.ready() or not hub.imu.stationary():
-            parado_desde = agora
-        elif agora - parado_desde >= parado_ms:
+
+        angulo_atual = hub.imu.heading()
+
+        erro = (target_heading - angulo_atual + 180) % 360 - 180
+
+        if abs(erro) < 0.5 and abs(motor_esq.speed()) < 17:
             break
-        wait(10)
-    hub.imu.reset_heading(0)
-    angulo_alvo = 0.0
+
+        tempo = cronometro.time()
+        cronometro.reset()
+
+        if tempo > 0:
+            derivada = (erro - erro_anterior) / (tempo / 1000)
+        else:
+            derivada = 0
+
+        erro_anterior = erro
+
+        sinal_controle = (erro * KP_TURN) + (derivada * KD_TURN)
+
+        if sinal_controle > velocidade_maxima:
+            sinal_controle = velocidade_maxima
+        elif sinal_controle < -velocidade_maxima:
+            sinal_controle = -velocidade_maxima
 
 
-def mover(distancia_graus, velocidade_base, usar_sensores_parada=False,
-          aceleracao=1800, desaceleracao=2400, periodo_ms=5,
-          tempo_limite=8000):
-    """Perfil por zonas + PID de direcao, usando graus de motor.
+        if abs(sinal_controle) < 25 and abs(erro) >= 0.8:
+            sinal_controle = 25 if erro > 0 else -25
 
-    A distancia e medida pela media dos dois encoders. Isso conserva o perfil
-    de aceleracao/desaceleracao enviado e detecta diferencas entre as rodas.
-    """
-    if min(abs(velocidade_base), aceleracao, desaceleracao, periodo_ms,
-           tempo_limite) <= 0:
-        raise ValueError("Velocidades, aceleracao e tempos devem ser positivos")
-    if usar_sensores_parada:
-        raise RuntimeError("Sensores de parada ainda nao foram configurados")
+        print(erro)
 
-    # Corrige o caso negativo da versao enviada: zero nao deve virar re.
-    distancia_alvo = abs(distancia_graus)
-    velocidade_base = min(abs(velocidade_base), LIMITE_MOTOR)
-    if distancia_graus < 0:
-        velocidade_base = -velocidade_base
+        motor_esq.run(-sinal_controle)
+        motor_dir.run(sinal_controle)
 
+        wait(5)
+
+    motor_esq.stop()
+    motor_dir.stop()
+
+    print('[MUNDO FÍSICO]: Rotação concluída e estabilizada em {}°'.format(hub.imu.heading()))
+
+def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
+    global target_heading
     motor_esq.reset_angle(0)
     motor_dir.reset_angle(0)
-    inicio = anterior = relogio_global.time()
-    angulo_atual = hub.imu.heading()
-    if distancia_alvo == 0:
-        motor_esq.hold()
-        motor_dir.hold()
-        registrar_movimento("mover", 0, 0, 0, angulo_alvo, angulo_atual,
-                            erro_angular(angulo_alvo, angulo_atual), inicio)
-        return 0
+
+    if distancia_graus < 1:
+        distancia_graus = abs(distancia_graus)
+        velocidade_base = -abs(velocidade_base)
 
     erro_anterior = 0.0
     integral = 0.0
-    zona_aceleracao = distancia_alvo * 0.20
-    zona_deceleracao = distancia_alvo * 0.75
-    velocidade_inicial = velocidade_base * 0.50
-    velocidade_final = velocidade_base * 0.60
-    velocidade_atual = 0.0
 
-    while True:
-        agora = relogio_global.time()
-        dt = max(1, agora - anterior) / 1000
-        anterior = agora
-        conferir_seguranca(inicio, tempo_limite)
-        realizado = (motor_esq.angle() + motor_dir.angle()) / 2
-        graus_atuais = abs(realizado)
-        if graus_atuais >= distancia_alvo:
-            break
+    # Configurações de zonas de velocidade (Ajustáveis)
+    zona_aceleracao = distancia_graus * 0.20   # Primeiros 20% do trajeto acelerando
+    zona_deceleracao = distancia_graus * 0.75 # A partir de 75% do trajeto desacelerando
+    velocidade_inicial = velocidade_base * 0.5 # Começa com 30% da velocidade base
+    velocidade_final = velocidade_base * 0.6   # Termina com 25% da velocidade base
 
-        # 1. Aceleracao: 50% ate 100% nos primeiros 20% da distancia.
+    while abs(motor_esq.angle()) < distancia_graus:
+        verificar_voltar_menu()
+        graus_atuais = abs(motor_esq.angle())
+
+        # 1. ZONA DE ACELERAÇÃO
         if graus_atuais < zona_aceleracao:
             proporcao = graus_atuais / zona_aceleracao
             vel_alvo = velocidade_inicial + (velocidade_base - velocidade_inicial) * proporcao
-        # 2. Desaceleracao: 100% ate 60% nos ultimos 25% da distancia.
+        # 2. ZONA DE DESACELERACÃO
         elif graus_atuais > zona_deceleracao:
-            proporcao_decel = 1.0 - ((graus_atuais - zona_deceleracao) /
-                                     (distancia_alvo - zona_deceleracao))
+            graus_dentro_da_decel = graus_atuais - zona_deceleracao
+            distancia_total_decel = distancia_graus - zona_deceleracao
+            proporcao_decel = 1.0 - (graus_dentro_da_decel / distancia_total_decel)
+            # Garante que a proporção não negative por erro de leitura de passos
             proporcao_decel = max(0.0, min(1.0, proporcao_decel))
             vel_alvo = velocidade_final + (velocidade_base - velocidade_final) * proporcao_decel
+        # 3. ZONA DE CRUZEIRO (Velocidade Máxima Estabilizada)
         else:
             vel_alvo = velocidade_base
 
-        # A rampa temporal evita salto de velocidade mesmo ao cruzar zonas.
-        velocidade_atual = rampa(velocidade_atual, vel_alvo, aceleracao,
-                                 desaceleracao, dt)
+        # PID de Estabilização Linear
         angulo_atual = hub.imu.heading()
-        erro = erro_angular(angulo_alvo, angulo_atual)
-        integral = limitar(integral + erro, 200)
+        erro = (target_heading - angulo_atual + 180) % 360 - 180
+        integral += erro
         if abs(erro) > 8:
             integral = 0
+
         derivada = erro - erro_anterior
         erro_anterior = erro
-        correcao = KP_LINE * erro + KI_LINE * integral + KD_LINE * derivada
-        comandar_rodas(velocidade_atual, correcao)
-        wait(max(1, periodo_ms - (relogio_global.time() - agora)))
+
+        correcao = (erro * KP_LINE) + (integral * KI_LINE) + (derivada * KD_LINE)
+
+        motor_esq.run(vel_alvo + correcao)
+        motor_dir.run(vel_alvo - correcao)
+
+        print("[POSSIBILIDADE B] T:{}ms | Progresso: {}/{} | VelAlvo: {:.1f} | GiroErro: {}".format(
+            relogio_global.time(), graus_atuais, distancia_graus, vel_alvo, erro
+        ))
+
+        if usar_sensores_parada:
+            if sensor_meio.reflection() < 18 or sensor_direita.reflection() < 18:
+                print("[SENSOR ALERTA B]: Linha detectada. Forçando parada.")
+                break
+
+        wait(5)
 
     motor_esq.hold()
     motor_dir.hold()
     wait(10)
-    realizado = (motor_esq.angle() + motor_dir.angle()) / 2
-    angulo_atual = hub.imu.heading()
-    erro = erro_angular(angulo_alvo, angulo_atual)
-    registrar_movimento("mover", distancia_graus, realizado,
-                        distancia_graus - realizado, angulo_alvo,
-                        angulo_atual, erro, inicio)
-    return realizado
 
-
-def girar(angulo, velocidade=420, kp=9.0, kd=0.25, aceleracao=1400,
-          desaceleracao=2000, tolerancia=0.7, estabilidade_ms=80,
-          periodo_ms=10, tempo_limite=9000):
-    """Giro central PD, guiado exclusivamente pela IMU do hub."""
-    atualizar_angulo_alvo(angulo)
-    return _girar_imu("girar", velocidade, kp, kd, aceleracao,
-                       desaceleracao, tolerancia, estabilidade_ms,
-                       periodo_ms, tempo_limite, None)
-
-
-def girar_pivo(angulo, pivo="esquerda", velocidade=350, kp=9.0, kd=0.25,
-               aceleracao=1200, desaceleracao=1800, tolerancia=0.8,
-               estabilidade_ms=80, periodo_ms=10, tempo_limite=9000):
-    """Gira mantendo uma roda parada: ``pivo='esquerda'`` ou ``'direita'``.
-
-    Use-o quando a roda parada estiver bem apoiada e puder servir de ponto de
-    referencia. Ele ocupa mais area que o giro central e pode escorregar se o
-    ponto de pivo estiver sobre uma borda ou tapete irregular.
-    """
-    if pivo not in ("esquerda", "direita"):
-        raise ValueError("pivo deve ser 'esquerda' ou 'direita'")
-    atualizar_angulo_alvo(angulo)
-    return _girar_imu("pivo_" + pivo, velocidade, kp, kd, aceleracao,
-                       desaceleracao, tolerancia, estabilidade_ms,
-                       periodo_ms, tempo_limite, pivo)
-
-
-def _girar_imu(tipo, velocidade, kp, kd, aceleracao, desaceleracao,
-                tolerancia, estabilidade_ms, periodo_ms, tempo_limite, pivo):
-    if min(abs(velocidade), aceleracao, desaceleracao, tolerancia,
-           estabilidade_ms, periodo_ms, tempo_limite) <= 0:
-        raise ValueError("Velocidades, tolerancias e tempos devem ser positivos")
-    velocidade = min(abs(velocidade), LIMITE_MOTOR)
-
-    erro_anterior = erro_angular(angulo_alvo, hub.imu.heading())
-    derivada = velocidade_atual = 0
-    inicio = anterior = relogio_global.time()
-    parado_desde = None
-
-    while True:
-        agora = relogio_global.time()
-        dt = max(1, agora - anterior) / 1000
-        anterior = agora
-        # A roda de pivo fica em hold; portanto, nao a interprete como travada.
-        conferir_seguranca(inicio, tempo_limite, pivo != "esquerda",
-                           pivo != "direita")
-        angulo_atual = hub.imu.heading()
-        erro = erro_angular(angulo_alvo, angulo_atual)
-        # O PD ja reduz a velocidade quando o erro diminui. Nao usamos
-        # sqrt(2*a*erro): ``a`` e graus de motor/s² e ``erro`` e graus da IMU.
-        # Misturar essas unidades tornava a frenagem inconsistente.
-        desejada, _, derivada = pid(
-            erro, erro_anterior, 0, derivada, dt, kp, 0, kd,
-            abs(velocidade), erro_eh_angular=True)
-        erro_anterior = erro
-        velocidade_atual = rampa(velocidade_atual, desejada, aceleracao,
-                                 desaceleracao, dt)
-
-        if abs(erro) <= tolerancia:
-            # Se houver uma pequena deriva depois, a proxima correcao comeca
-            # do repouso, sem reaplicar a velocidade alta do ciclo anterior.
-            velocidade_atual = 0
-            if pivo is None:
-                comandar_rodas(0, 0)
-            elif pivo == "esquerda":
-                motor_esq.hold()
-                motor_dir.run(0)
-            else:
-                motor_esq.run(0)
-                motor_dir.hold()
-            if parado_desde is None:
-                parado_desde = agora
-            if agora - parado_desde >= estabilidade_ms:
-                motor_esq.hold()
-                motor_dir.hold()
-                registrar_movimento(tipo, angulo_alvo, angulo_atual, erro,
-                                    angulo_alvo, angulo_atual, erro, inicio)
-                return angulo_atual
-        else:
-            parado_desde = None
-            if pivo is None:
-                comandar_rodas(0, velocidade_atual)
-            elif pivo == "esquerda":
-                motor_esq.hold()
-                motor_dir.run(limitar(-velocidade_atual, LIMITE_MOTOR))
-            else:
-                motor_esq.run(limitar(velocidade_atual, LIMITE_MOTOR))
-                motor_dir.hold()
-        wait(max(1, periodo_ms - (relogio_global.time() - agora)))
-
-
-def run_angle_interrompivel(motor, velocidade, angulo, tempo_limite=5000):
-    inicio = relogio_global.time()
-    motor.run_angle(abs(velocidade), angulo, then=Stop.HOLD, wait=False)
-    while not motor.done():
-        verificar_voltar_menu()
-        if relogio_global.time() - inicio >= tempo_limite:
-            parar_todos_motores()
-            raise RuntimeError("Uma ferramenta demorou demais")
-        if motor.stalled():
-            parar_todos_motores()
-            raise RuntimeError("Uma ferramenta travou")
-        wait(10)
-
-
-def run_until_stalled_interrompivel(motor, velocidade, tempo_limite=4000):
-    inicio = relogio_global.time()
-    motor.run(velocidade)
-    while not motor.stalled():
-        verificar_voltar_menu()
-        if relogio_global.time() - inicio >= tempo_limite:
-            motor.stop()
-            raise RuntimeError("A ferramenta nao encontrou o fim de curso")
-        wait(10)
-    motor.stop()
-
-
-def auxD(posicao, velocidade=-400):
+def auxD(posicao,velocidade=-400):
+    print(velocidade )
     if posicao == "inicio":
         run_until_stalled_interrompivel(motor_aux_esq, velocidade)
         wait(100)
     else:
-        run_angle_interrompivel(motor_aux_esq, velocidade, int(posicao))
+        posicao = int(posicao)
+        run_angle_interrompivel(motor_aux_esq, velocidade, posicao)
 
-
-def auxE(posicao, velocidade=-400):
+def auxE(posicao,velocidade=-400):
     if posicao == "inicio":
-        run_until_stalled_interrompivel(motor_aux_dir, velocidade)
+        run_until_stalled_interrompivel(motor_aux_dir, -400)
         wait(100)
     else:
-        run_angle_interrompivel(motor_aux_dir, velocidade, int(posicao))
+        posicao = int(posicao)
+        run_angle_interrompivel(motor_aux_dir, 350, posicao)
 
-
-def esperar(tempo_ms):
-    inicio = relogio_global.time()
-    while relogio_global.time() - inicio < tempo_ms:
+def inicial():
+    hub.imu.reset_heading(0)
+    atualizar_target_heading(0)
+def esperar(tempo):
+    for _ in range(tempo):
         verificar_voltar_menu()
         wait(10)
 
-
-# ROTINAS ORIGINAIS DO BACKUP ZENTIE_FLL.PY
-def teste():
+def R5():
     inicial()
-    auxD(-300)
-    auxD(300, -200)
-
+    girar(-90, 700)
 
 def R1():
     inicial()
-    mover(1200, 700)
-    girar(52, 300)
-    mover(485, 400)
-    girar(-44, 300)
-    mover(455, 400)
-    auxD(270)
-    mover(-400, 500)
-    girar(-77, 400)
-    mover(175, 400)
-    mover(56, 300)
-    auxE(130)
-    girar(-93, 800)
-    auxE(-100)
-    girar(-88, 600)
-    esperar(100)
-    auxE(120)
-    auxE(-120)
-    mover(-50, 1000)
-    girar(180, 1000)
-    mover(3000, 1000)
-
+    mover(537, 700)
+    girar(45, 700)
+    mover(390, 700)
+    auxD(210)
+    mover(-800, 900)
 
 def R2():
     inicial()
-    mover(910, 500)
-    auxE(-1440)
-    mover(-60, 400)
-    esperar(150)
-    mover(80, 300)
-    auxD(-4000)
-    mover(-2200, 700)
+    mover(1147, 700)
+    mover(-464, 800)
+    girar(90, 800)
+    mover(-200, 700)
+    mover(1150, 800)
     esperar(10)
-    auxE(2000)
+    girar(0, 600)
+    mover(130, 600)
+    auxD(-100, 600)
+    auxD(-635,900)
+    mover(-5, 300)
+    girar(10, 300)
+    mover(-43, 200)
+    esperar(300)
+    mover(35, 100)
+    auxD(100, 300)
+    auxD(500, 800)
+    mover(-85, 800)
+    girar(-90, 900)
+    mover(-430, 900)
+    girar(0, 900)
+    mover(646, 800)
+    auxE(-600, 900)
+    mover(130, 800)
+    girar(20, 700)
+    mover(160, 800)
+    auxE(600, 900)
+    girar(20, 700)
+    mover(1600, 600)
 
-
+    
 def R3():
     inicial()
     mover(387, 467)
@@ -438,43 +278,21 @@ def R3():
     girar(30, 1000)
     mover(-1000, 1000)
 
-
 def R4():
     inicial()
-    mover(1850, 750)
-    girar(180, 700)
-    mover(-700, 600)
-    mover(349, 570)
-    girar(91, 400)
-    auxE(-403)
-    mover(228, 75)
-    auxE(67)
-    mover(-342, 600)
-    girar(180, 900)
-    mover(530, 600)
-    girar(139, 550)
-    auxE(-300)
-    mover(130, 7038)  # limitado automaticamente a LIMITE_MOTOR.
-    mover(-300, 500)
-    girar(49, 500)
-    auxD(350)
-    mover(390, 400)
-    girar(37, 400)
-    auxD(80, 300)
-    mover(14, 670)
-    auxD(200, 200)
-
+    auxD(90)
 
 OPCOES_MENU = (
     ("R1", R1),
     ("R2", R2),
     ("R3", R3),
     ("R4", R4),
-    ("teste", teste),
+    ("R5", R5),
 )
 
 
 def mostrar_opcao(indice):
+    # O display mostra o numero da rotina selecionada.
     hub.display.number(indice + 1)
     print("Selecionado:", OPCOES_MENU[indice][0])
 
@@ -488,39 +306,35 @@ def menu():
 
     while True:
         botoes = hub.buttons.pressed()
+
         if Button.LEFT in botoes:
             indice = (indice + 1) % len(OPCOES_MENU)
             mostrar_opcao(indice)
             esperar_soltar_botoes()
+
         elif Button.RIGHT in botoes:
             nome, rotina = OPCOES_MENU[indice]
             esperar_soltar_botoes()
             hub.display.char("P")
-            limpar_log()
+            hub.system.set_stop_button(None)
             print("Iniciando:", nome)
             try:
                 rotina()
-                parar_todos_motores()
                 hub.speaker.beep(700, 50)
-                print("Rotina concluida:", nome)
             except VoltarMenu:
                 parar_todos_motores()
                 hub.speaker.beep(300, 80)
                 print("Rotina interrompida. Voltando ao menu.")
-            except BaseException:
-                parar_todos_motores()
-                hub.speaker.beep(200, 200)
-                raise
-            finally:
-                mostrar_log()
-                mostrar_opcao(indice)
+            mostrar_opcao(indice)
+
         elif Button.CENTER in botoes:
             parar_todos_motores()
+            hub.system.set_stop_button(None)
             hub.display.char("S")
             esperar_soltar_botoes()
             mostrar_opcao(indice)
+
         wait(30)
 
 
-if __name__ == "__main__":
-    menu()
+menu()
