@@ -18,13 +18,15 @@ relogio_global = StopWatch()
 target_heading = 0.0  
 
 
-KP_LINE = 5
-KI_LINE = 0.01
-KD_LINE = 2
+# Ganhos moderados: a derivada agora é calculada em graus/segundo.
+# Ganhos muito altos fazem o robô alternar a correção e "tremer".
+KP_LINE = 2.2
+KI_LINE = 0.002
+KD_LINE = 0.18
 
 
-KP_TURN = 11
-KD_TURN = 1.5
+KP_TURN = 3
+KD_TURN = 0.35
 
 class VoltarMenu(Exception):
     pass
@@ -95,14 +97,16 @@ def girar(graus, velocidade_maxima):
 
         erro = (target_heading - angulo_atual + 180) % 360 - 180
 
-        if abs(erro) < 0.6 and abs(motor_esq.speed()) < 12:
+        if abs(erro) < 0.7 and abs(motor_esq.speed()) < 12:
             break
 
         tempo = cronometro.time()
         cronometro.reset()
 
+        # Evita picos quando o loop ou o sensor fornece uma leitura rápida.
+        dt = max(0.01, min(0.1, tempo / 1000))
         if tempo > 0:
-            derivada = (erro - erro_anterior) / (tempo / 1000)
+            derivada = (erro - erro_anterior) / dt
         else:
             derivada = 0
 
@@ -116,15 +120,16 @@ def girar(graus, velocidade_maxima):
             sinal_controle = -velocidade_maxima
 
 
-        if abs(sinal_controle) < 35 and abs(erro) >= 0.6:
-            sinal_controle = 35 if erro > 0 else -35
+        # Perto do alvo, a velocidade mínima anterior causava ultrapassagem.
+        if abs(sinal_controle) < 22 and abs(erro) >= 2.0:
+            sinal_controle = 22 if erro > 0 else -22
 
         print(erro)
 
         motor_esq.run(-sinal_controle)
         motor_dir.run(sinal_controle)
 
-        wait(5)
+        wait(10)
 
     motor_esq.stop()
     motor_dir.stop()
@@ -142,6 +147,8 @@ def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
 
     erro_anterior = 0.0
     integral = 0.0
+    cronometro = StopWatch()
+    erro_filtrado = 0.0
 
     # Configurações de zonas de velocidade (Ajustáveis)
     zona_aceleracao = distancia_graus * 0.25   # Primeiros 20% do trajeto acelerando
@@ -171,21 +178,32 @@ def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
 
         # PID de Estabilização Linear
         angulo_atual = hub.imu.heading()
-        erro = (target_heading - angulo_atual + 180) % 360 - 180
-        integral += erro
-        if abs(erro) > 8:
+        erro_bruto = (target_heading - angulo_atual + 180) % 360 - 180
+
+        # Filtro simples para não transmitir todo o ruído do IMU aos motores.
+        erro_filtrado = (0.75 * erro_filtrado) + (0.25 * erro_bruto)
+        tempo = cronometro.time()
+        cronometro.reset()
+        dt = max(0.01, min(0.1, tempo / 1000))
+
+        # Integral em grau-segundo, com limite anti-windup.
+        if abs(erro_filtrado) < 8:
+            integral += erro_filtrado * dt
+            integral = limitar(integral, -40, 40)
+        else:
             integral = 0
 
-        derivada = erro - erro_anterior
-        erro_anterior = erro
+        derivada = (erro_filtrado - erro_anterior) / dt
+        erro_anterior = erro_filtrado
 
-        correcao = (erro * KP_LINE) + (integral * KI_LINE) + (derivada * KD_LINE)
+        correcao = (erro_filtrado * KP_LINE) + (integral * KI_LINE) + (derivada * KD_LINE)
+        correcao = limitar(correcao, -abs(vel_alvo) * 0.45, abs(vel_alvo) * 0.45)
 
         motor_esq.run(vel_alvo - correcao)
         motor_dir.run(vel_alvo + correcao)
 
         print("[POSSIBILIDADE B] T:{}ms | Progresso: {}/{} | VelAlvo: {:.1f} | GiroErro: {}".format(
-            relogio_global.time(), graus_atuais, distancia_graus, vel_alvo, erro
+            relogio_global.time(), graus_atuais, distancia_graus, vel_alvo, erro_filtrado
         ))
 
         if usar_sensores_parada:
@@ -193,7 +211,7 @@ def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
                 print("[SENSOR ALERTA B]: Linha detectada. Forçando parada.")
                 break
 
-        wait(5)
+        wait(10)
 
     motor_esq.hold()
     motor_dir.hold()
@@ -265,8 +283,8 @@ def R2():
     mover(-464, 800)
     girar(90, 800)
     mover(-200, 700)
-    mover(1150, 800)
-    esperar(10)
+    mover(1150, 900)
+    esperar(12)
     girar(0, 600)
     mover(130, 600)
     auxD(-100, 600)
@@ -285,8 +303,8 @@ def R2():
     mover(646, 800)
     auxE(-600, 900)
     mover(130, 800)
-    girar(20, 700)
-    mover(160, 800)
+    girar(17, 700)
+    mover(160, 600)
     auxE(600, 900)
     girar(20, 700)
     mover(1600, 600)
@@ -295,21 +313,40 @@ def R3():
     inicial()
     mover(467, 367)
     mover(-1000, 999)
-    esperar(200)
+    esperar(150)
     mover(1300, 800)
-    girar(-33, 800)
-    mover(442, 450)
+    girar(-30, 800)
+    mover(422, 450)
     auxD(400, 900)
     mover(-442, 400)
-    girar(22, 800)
+    girar(17, 800)
     mover(-1367, 800)
-def R4():
+
+async def R4_async():
     inicial()
-    auxD(90)
+    mover(1600,870)
+    girar(40, 600)
+    mover(100, 900)
+    auxD(-667, 400)
+    auxD(900, 300)
+    mover(-442, 500)
+    girar(-7, 500) 
+    mover(198,500)
+    esperar(60)
+    auxD(-967, 500)
+    esperar(120)
+    mover(-150, 500)
+    auxD(670, 500)
+    girar(-7, 400)
+    mover(-1900, 900)
+
+def R4():
+    run_task(R4_async())
+    
 
 def R5():
     inicial()
-    moverlixo(390)
+    auxD(-900, 200)
 
 
 OPCOES_MENU = (
