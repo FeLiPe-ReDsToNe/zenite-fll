@@ -13,7 +13,7 @@ Aqui você encontrará todo o código-fonte desenvolvido para a nossa base robó
 Somos uma equipe de robótica apaixonada por tecnologia, engenharia e inovação. Buscamos sempre aplicar os **Core Values** da FIRST em cada treino, promovendo o trabalho em equipe, a inclusão e o aprendizado contínuo.
 
 * 📍 **Origem:** Colégio São José, Itajaí-SC
-* 👥 **Integrantes:** Felipe M(C). ALcides S. Marina S. Fernando F. Ana Clara F. 
+* 👥 **Integrantes:** Felipe M(C). Marina S. Fernando F. Ana Clara F. 
 * 👨‍🏫 **Técnico(s) / Mentores:**  Victória P. Gerusa N. Enzo G. 
 
 ---
