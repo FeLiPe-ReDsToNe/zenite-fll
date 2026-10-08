@@ -25,7 +25,7 @@ KI_LINE = 0.002
 KD_LINE = 0.18
 
 
-KP_TURN = 3
+KP_TURN = 3.6
 KD_TURN = 0.35
 
 class VoltarMenu(Exception):
@@ -123,8 +123,6 @@ def girar(graus, velocidade_maxima):
         # Perto do alvo, a velocidade mínima anterior causava ultrapassagem.
         if abs(sinal_controle) < 22 and abs(erro) >= 2.0:
             sinal_controle = 22 if erro > 0 else -22
-
-        print(erro)
 
         motor_esq.run(-sinal_controle)
         motor_dir.run(sinal_controle)
@@ -255,6 +253,13 @@ async def auxD_async(posicao, velocidade=-400):
     else:
         posicao = int(posicao)
         await motor_aux_esq.run_angle(velocidade, posicao)
+    
+async def auxE_async(posicao, velocidade=-400):
+    if posicao == "inicio":
+        await motor_aux_dir.run_until_stalled(velocidade)
+    else:
+        posicao = int(posicao)
+        await motor_aux_dir.run_angle(velocidade, posicao)
 
 async def moverlixo_async(velocidade, graus):
     await multitask(
@@ -264,10 +269,10 @@ async def moverlixo_async(velocidade, graus):
 
 async def R1_async():
     inicial()
-    mover(660, 800)
-    auxD(-500, 900)
-    await multitask(moverlixo_async(-700, 600), auxD_async(-500, 900))
-    mover(-942, 900)
+    mover(800, 800)
+    auxE(500, 900)
+    await multitask(moverlixo_async(-700, 600), auxE_async(700, 900))
+    mover(-942, 700)
 
 def R1():
     run_task(R1_async())
@@ -311,32 +316,33 @@ def R2():
 
 def R3():
     inicial()
-    mover(467, 367)
+    mover(480, 367)
     mover(-1000, 999)
     esperar(150)
     mover(1300, 800)
-    girar(-30, 800)
-    mover(422, 450)
-    auxD(400, 900)
+    girar(-32, 900)
+    mover(422, 550)
+    auxD(-400, 900)
     mover(-442, 400)
-    girar(17, 800)
-    mover(-1367, 800)
+    girar(18, 900)
+    mover(-1367, 900)
 
 async def R4_async():
     inicial()
     mover(1600,870)
     girar(40, 600)
     mover(100, 900)
-    auxD(-667, 400)
-    auxD(900, 300)
-    mover(-442, 500)
+    auxD(100, 700)
+    mover(-67, 400)
+    auxD(-500, 150)
+    mover(-370, 500)
     girar(-7, 500) 
-    mover(198,500)
+    auxD(500, 500)
+    mover(192, 500)
     esperar(60)
-    auxD(-967, 500)
-    esperar(120)
+    auxD(500, 500)
     mover(-150, 500)
-    auxD(670, 500)
+    mover(100, 300)
     girar(-7, 400)
     mover(-1900, 900)
 
@@ -344,10 +350,42 @@ def R4():
     run_task(R4_async())
     
 
-def R5():
+async def R5_async():
     inicial()
-    auxD(-900, 200)
+    await multitask(auxD_async(-2000, 300), auxE_async(2000, 300))
 
+def R5():
+    run_task(R5_async())
+def R6():
+    inicial()
+    mover(1600, 800)
+    girar(-45, 400)
+    mover(95, 300)
+    girar(-10, 400)
+    mover(-80, 600)
+    girar(48, 500)
+    mover(370, 400)
+    auxE(-1860, 900)
+
+def R7():
+    inicial()
+    mover(600, 600)
+    girar(27, 500)
+    mover(200, 400)
+    auxD(-300, 400)
+    mover(-220, 500)
+    girar(67, 400)
+    auxD(300, 400)
+    mover(-620, 900)
+    mover(200, 600)
+    girar(320, 500)
+    mover(170, 500)
+    girar(20, 400)
+    mover(-2000, 500)
+
+
+    
+        
 
 OPCOES_MENU = (
     ("R1", R1),
@@ -355,6 +393,8 @@ OPCOES_MENU = (
     ("R3", R3),
     ("R4", R4),
     ("R5", R5),
+    ("R6", R6),
+    ("R7", R7),
 )
 
 
