@@ -20,13 +20,37 @@ target_heading = 0.0
 
 # Ganhos moderados: a derivada agora é calculada em graus/segundo.
 # Ganhos muito altos fazem o robô alternar a correção e "tremer".
-KP_LINE = 2.2
+KP_LINE = 3.5
 KI_LINE = 0.002
 KD_LINE = 0.18
 
 
-KP_TURN = 3.6
-KD_TURN = 0.35
+KP_TURN = 5
+KD_TURN = 0.13
+
+
+
+def testar_imu_parado():
+    parar_todos_motores()
+    wait(500)
+
+    hub.imu.reset_heading(0)
+    atualizar_target_heading(0)
+
+    wait(500)
+
+    cronometro = StopWatch()
+
+    while cronometro.time() < 5000:
+        angulo = hub.imu.heading()
+        erro = erro_angular(0, angulo)
+
+        print(
+            "Angulo:", round(angulo, 2),
+            "| Erro:", round(erro, 2)
+        )
+
+        wait(200)
 
 class VoltarMenu(Exception):
     pass
@@ -97,7 +121,7 @@ def girar(graus, velocidade_maxima):
 
         erro = (target_heading - angulo_atual + 180) % 360 - 180
 
-        if abs(erro) < 0.7 and abs(motor_esq.speed()) < 12:
+        if abs(erro) < 0.6 and abs(motor_esq.speed()) < 20:
             break
 
         tempo = cronometro.time()
@@ -143,15 +167,18 @@ def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
         distancia_graus = abs(distancia_graus)
         velocidade_base = -abs(velocidade_base)
 
-    erro_anterior = 0.0
+    angulo_inicial = hub.imu.heading()
+    erro_inicial = erro_angular(target_heading, angulo_inicial)
+
+    erro_anterior = erro_inicial
     integral = 0.0
     cronometro = StopWatch()
-    erro_filtrado = 0.0
+    erro_filtrado = erro_inicial
 
     # Configurações de zonas de velocidade (Ajustáveis)
-    zona_aceleracao = distancia_graus * 0.25   # Primeiros 20% do trajeto acelerando
-    zona_deceleracao = distancia_graus * 0.75 # A partir de 75% do trajeto desacelerando
-    velocidade_inicial = velocidade_base * 0.5 # Começa com 30% da velocidade base
+    zona_aceleracao = distancia_graus * 0.15   # Primeiros 20% do trajeto acelerando
+    zona_deceleracao = distancia_graus * 0.85 # A partir de 75% do trajeto desacelerando
+    velocidade_inicial = velocidade_base * 0.6 # Começa com 30% da velocidade base
     velocidade_final = velocidade_base * 0.6   # Termina com 25% da velocidade base
 
     while abs(motor_esq.angle()) < distancia_graus:
@@ -237,6 +264,9 @@ def inicial():
     hub.imu.reset_heading(0)
     atualizar_target_heading(0)
 
+async def esperar_async(tempo_ms):
+    await wait(tempo_ms)
+
 def esperar(tempo):
     for _ in range(tempo):
         verificar_voltar_menu()
@@ -269,24 +299,80 @@ async def moverlixo_async(velocidade, graus):
 
 async def R1_async():
     inicial()
-    mover(800, 800)
+    mover(530, 367)
+    mover(-1000, 999)
+    await esperar_async(1000)
+    mover(1300, 900)
+    girar(-31, 800)
+    mover(422, 550)
+    auxD(-400, 900)
+    mover(-442, 900)
+    girar(18, 900)
+    mover(-1367, 900)
+    await esperar_async(1500)
+    inicial()
+    mover(820, 900)
     auxE(500, 900)
-    await multitask(moverlixo_async(-700, 600), auxE_async(700, 900))
-    mover(-942, 700)
+    await multitask(moverlixo_async(-1000, 800), auxE_async(700, 900))
+    mover(-942, 1000)
 
 def R1():
     run_task(R1_async())
 
+def R2():
+    inicial()
+    mover(1707, 900)
+    mover(-10, 800)
+    mover(10, 800)
+    auxE(150, 700)
+
+
+
+def R3():
+    inicial()
+    mover(1600, 870)
+    girar(40, 600)
+    mover(100, 900)
+    auxD(100, 700)
+    mover(-67, 400)
+    auxD(-500, 150)
+    mover(-370, 500)
+    girar(-7, 500) 
+    auxD(500, 500)
+    mover(192, 500)
+    esperar(60)
+    auxD(500, 500)
+    mover(-150, 500)
+    mover(100, 300)
+    girar(-7, 400)
+    mover(-1900, 900)
+
+def R4():
+    inicial()
+    auxD(900, 500)
+
+async def R5_async():
+    inicial()
+    mover(600, 800)
+    girar(28, 800)
+    mover(150, 600)
+    auxD(-300, 900)
+    mover(-220, 500)
+    girar(67, 800)
+    auxD(300, 900)
+    await multitask(moverlixo_async(900, -400), auxD_async(-300, 900))
+    girar(-48, 700)
+    mover(170, 800)
+    mover(-2000, 800)
 
 def R5():
     inicial()
-    moverlixo(390)
-
-def R2():
+    run_task(R5_async())
+def R6():
     inicial()
     mover(1147, 700)
     mover(-464, 800)
-    girar(90, 800)
+    girar(90, 900)
     mover(-200, 700)
     mover(1150, 900)
     esperar(12)
@@ -314,79 +400,12 @@ def R2():
     girar(20, 700)
     mover(1600, 600)
 
-def R3():
+def R8():
     inicial()
-    mover(480, 367)
-    mover(-1000, 999)
-    esperar(150)
-    mover(1300, 800)
-    girar(-32, 900)
-    mover(422, 550)
-    auxD(-400, 900)
-    mover(-442, 400)
-    girar(18, 900)
-    mover(-1367, 900)
-
-async def R4_async():
-    inicial()
-    mover(1600,870)
-    girar(40, 600)
-    mover(100, 900)
-    auxD(100, 700)
-    mover(-67, 400)
-    auxD(-500, 150)
-    mover(-370, 500)
-    girar(-7, 500) 
-    auxD(500, 500)
-    mover(192, 500)
-    esperar(60)
-    auxD(500, 500)
-    mover(-150, 500)
-    mover(100, 300)
-    girar(-7, 400)
-    mover(-1900, 900)
-
-def R4():
-    run_task(R4_async())
-    
-
-async def R5_async():
-    inicial()
-    await multitask(auxD_async(-2000, 300), auxE_async(2000, 300))
-
-def R5():
-    run_task(R5_async())
-def R6():
-    inicial()
-    mover(1600, 800)
-    girar(-45, 400)
-    mover(95, 300)
-    girar(-10, 400)
-    mover(-80, 600)
-    girar(48, 500)
-    mover(370, 400)
-    auxE(-1860, 900)
+    mover(1242,500)
 
 def R7():
-    inicial()
-    mover(600, 600)
-    girar(27, 500)
-    mover(200, 400)
-    auxD(-300, 400)
-    mover(-220, 500)
-    girar(67, 400)
-    auxD(300, 400)
-    mover(-620, 900)
-    mover(200, 600)
-    girar(320, 500)
-    mover(170, 500)
-    girar(20, 400)
-    mover(-2000, 500)
-
-
-    
-        
-
+    auxE(300, 700)
 OPCOES_MENU = (
     ("R1", R1),
     ("R2", R2),
@@ -395,6 +414,7 @@ OPCOES_MENU = (
     ("R5", R5),
     ("R6", R6),
     ("R7", R7),
+    ("R8", R8),
 )
 
 
