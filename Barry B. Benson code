@@ -25,8 +25,8 @@ KI_LINE = 0.002
 KD_LINE = 0.18
 
 
-KP_TURN = 5
-KD_TURN = 0.13
+KP_TURN = 8
+KD_TURN = 0.25
 
 
 
@@ -107,44 +107,43 @@ def limitar(valor, minimo, maximo):
     return valor
 
 
+
 def girar(graus, velocidade_maxima):
     global target_heading
     atualizar_target_heading(graus)
 
-    erro_anterior = 0.0
+    angulo_inicial = hub.imu.heading()
+    erro_anterior = (target_heading - angulo_inicial + 180) % 360 - 180
+
     cronometro = StopWatch()
 
     while True:
         verificar_voltar_menu()
 
         angulo_atual = hub.imu.heading()
-
         erro = (target_heading - angulo_atual + 180) % 360 - 180
 
-        if abs(erro) < 0.6 and abs(motor_esq.speed()) < 20:
+        # Tolerância ligeiramente maior para concluir mais rápido
+        if abs(erro) < 1.0 and abs(motor_esq.speed()) < 20:
             break
 
         tempo = cronometro.time()
         cronometro.reset()
 
-        # Evita picos quando o loop ou o sensor fornece uma leitura rápida.
         dt = max(0.01, min(0.1, tempo / 1000))
-        if tempo > 0:
-            derivada = (erro - erro_anterior) / dt
-        else:
-            derivada = 0
 
+        derivada = ((erro - erro_anterior + 180) % 360 - 180) / dt
         erro_anterior = erro
 
         sinal_controle = (erro * KP_TURN) + (derivada * KD_TURN)
 
-        if sinal_controle > velocidade_maxima:
-            sinal_controle = velocidade_maxima
-        elif sinal_controle < -velocidade_maxima:
-            sinal_controle = -velocidade_maxima
+        # Limite máximo de velocidade
+        sinal_controle = max(
+            -velocidade_maxima,
+            min(velocidade_maxima, sinal_controle)
+        )
 
-
-        # Perto do alvo, a velocidade mínima anterior causava ultrapassagem.
+        # Velocidade mínima longe do alvo
         if abs(sinal_controle) < 22 and abs(erro) >= 2.0:
             sinal_controle = 22 if erro > 0 else -22
 
@@ -153,10 +152,12 @@ def girar(graus, velocidade_maxima):
 
         wait(10)
 
-    motor_esq.stop()
-    motor_dir.stop()
+    # Frenagem em vez de deixar os motores livres
+    motor_esq.brake()
+    motor_dir.brake()
 
-    print('[MUNDO FÍSICO]: Rotação concluída e estabilizada em {}°'.format(hub.imu.heading()))
+    print('Rotação concluída em {}°'.format(hub.imu.heading()))
+
 
 def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
     global target_heading
@@ -260,6 +261,7 @@ def auxE(posicao, velocidade=-400):
         posicao = int(posicao)
         run_angle_interrompivel(motor_aux_dir, 350, posicao)
 
+
 def inicial():
     hub.imu.reset_heading(0)
     atualizar_target_heading(0)
@@ -297,6 +299,19 @@ async def moverlixo_async(velocidade, graus):
         motor_dir.run_angle(velocidade, graus)
     )
 
+async def meiopivo_async13(velocidade, graus):
+    await multitask(
+        motor_esq.run_angle(velocidade, graus),
+    )
+
+async def meiopivo_async22(velocidade, graus):
+    await multitask(
+        motor_dir.run_angle(velocidade, graus),
+    )
+
+async def pivo():
+    await multitask(meiopivo_async(700, 100), pivo22(90, 700))
+
 async def R1_async():
     inicial()
     mover(530, 367)
@@ -311,7 +326,7 @@ async def R1_async():
     mover(-1367, 900)
     await esperar_async(1500)
     inicial()
-    mover(820, 900)
+    mover(850, 900)
     auxE(500, 900)
     await multitask(moverlixo_async(-1000, 800), auxE_async(700, 900))
     mover(-942, 1000)
@@ -321,37 +336,36 @@ def R1():
 
 def R2():
     inicial()
-    mover(1707, 900)
-    mover(-10, 800)
-    mover(10, 800)
-    auxE(150, 700)
-
-
+    mover(1713, 900)
+    auxE(90, 300)
+    mover(-27, 900)
+    auxE(130, 300)
+    mover(100, 900)
+    auxE(-100, 700)
+    mover(-160, 700)
+    auxE(90, 700)
+    mover(200, 700)
 
 def R3():
     inicial()
-    mover(1600, 870)
-    girar(40, 600)
+    mover(1367, 900)
+    girar(-55, 900)
+    mover(100,930)
+    mover(-70, 900)
+    girar(0, 900)
+    mover(-250, 900)
+    girar(-90, 900)
+    mover(-137, 900)
+    mover(1000, 900)
+    girar(-16, 600)
+    girar(-100, 800)
+    mover(467, 900)
+    auxE(-300, 900)
     mover(100, 900)
-    auxD(100, 700)
-    mover(-67, 400)
-    auxD(-500, 150)
-    mover(-370, 500)
-    girar(-7, 500) 
-    auxD(500, 500)
-    mover(192, 500)
-    esperar(60)
-    auxD(500, 500)
-    mover(-150, 500)
-    mover(100, 300)
-    girar(-7, 400)
-    mover(-1900, 900)
+    auxE(200, 900)
+    mover(-400, 700)
 
-def R4():
-    inicial()
-    auxD(900, 500)
-
-async def R5_async():
+async def R4_async():
     inicial()
     mover(600, 800)
     girar(28, 800)
@@ -365,47 +379,67 @@ async def R5_async():
     mover(170, 800)
     mover(-2000, 800)
 
+def R4():
+    inicial()
+    run_task(R4_async())
+
+
+#Revisar!!!
+
 def R5():
     inicial()
-    run_task(R5_async())
+    mover(1470, 870)
+    girar(38, 900)
+    mover(340, 900)
+    auxD(230, 700)
+    auxD(-167, 800)
+    girar(0, 800)
+    mover(-120, 800)
+    auxD(-120, 800)
+    auxD(120, 800)
+    #paramos aqui
+    girar(55, 900)
+    mover(-250, 900)
+    girar(10, 800)
+    mover(222, 800)
+    girar(-4, 800)
+    mover(-100, 600)
+ 
 def R6():
     inicial()
-    mover(1147, 700)
-    mover(-464, 800)
-    girar(90, 900)
-    mover(-200, 700)
-    mover(1150, 900)
-    esperar(12)
+    mover (1000 , 900)
+    girar (70, 900)
+    mover(707, 900)
     girar(0, 600)
-    mover(130, 600)
-    auxD(-100, 600)
-    auxD(-635, 900)
-    mover(-5, 300)
-    girar(10, 300)
-    mover(-43, 200)
-    esperar(300)
-    mover(35, 100)
-    auxD(100, 300)
-    auxD(500, 800)
-    mover(-85, 800)
-    girar(-90, 900)
-    mover(-430, 900)
-    girar(0, 900)
-    mover(646, 800)
-    auxE(-600, 900)
-    mover(130, 800)
-    girar(17, 700)
-    mover(160, 600)
-    auxE(600, 900)
-    girar(20, 700)
-    mover(1600, 600)
+    mover(320, 400)
+    mover(-90, 750)
+    girar (-95, 900)
+    mover(160, 900)
+    girar(-110, 500)
+    mover(44, 800)
+    auxE(-300, 100)
+    mover(100, 1000)
 
-def R8():
-    inicial()
-    mover(1242,500)
 
 def R7():
-    auxE(300, 700)
+    inicial()
+    mover(425, 900)
+    auxE(230, 900)
+    auxE(-160, 200)
+    mover(-470, 900)
+    esperar(150)
+    mover(370, 900)
+    girar(5, 900)
+    mover(100, 900)
+
+async def teste_async():
+    inicial()
+    await multitask(meiopivo_async22(400, 300), meiopivo_async13(1000, -1400))
+
+def teste():
+    run_task(teste_async())
+
+
 OPCOES_MENU = (
     ("R1", R1),
     ("R2", R2),
@@ -414,7 +448,7 @@ OPCOES_MENU = (
     ("R5", R5),
     ("R6", R6),
     ("R7", R7),
-    ("R8", R8),
+    ("R8", teste),
 )
 
 
