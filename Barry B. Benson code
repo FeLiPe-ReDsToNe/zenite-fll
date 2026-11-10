@@ -386,25 +386,29 @@ def R4():
 
 #Revisar!!!
 
-def R5():
+async def R5_async():
     inicial()
     mover(1470, 870)
     girar(38, 900)
     mover(340, 900)
     auxD(230, 700)
-    auxD(-167, 800)
     girar(0, 800)
     mover(-120, 800)
-    auxD(-120, 800)
-    auxD(120, 800)
     #paramos aqui
     girar(55, 900)
     mover(-250, 900)
-    girar(10, 800)
-    mover(222, 800)
-    girar(-4, 800)
-    mover(-100, 600)
- 
+    girar(-13, 800)
+    mover(220, 800)
+    girar(2, 800)
+    mover(-105, 900)
+    girar(-10, 800)
+    mover(-50, 900)
+    await pivo()
+
+def R5():
+    inicial()
+    run_task(R5_async())
+
 def R6():
     inicial()
     mover (1000 , 900)
@@ -432,12 +436,10 @@ def R7():
     girar(5, 900)
     mover(100, 900)
 
-async def teste_async():
-    inicial()
-    await multitask(meiopivo_async22(400, 300), meiopivo_async13(1000, -1400))
-
 def teste():
-    run_task(teste_async())
+    inicial()
+    mover(2000, 900)
+
 
 
 OPCOES_MENU = (
@@ -448,7 +450,7 @@ OPCOES_MENU = (
     ("R5", R5),
     ("R6", R6),
     ("R7", R7),
-    ("R8", teste),
+    ("RT", teste),
 )
 
 
