@@ -1,2 +1,6 @@
-def erro_angular(alvo, atual):
-    return (alvo - atual + 180) % 360 - 180
+def limitar(valor, minimo, maximo):
+    if valor < minimo:
+        return minimo
+    if valor > maximo:
+        return maximo
+    return valor
