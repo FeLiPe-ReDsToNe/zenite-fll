@@ -1,126 +1,49 @@
-from pybricks.hubs import PrimeHub
-from pybricks.pupdevices import Motor, ColorSensor
-from pybricks.parameters import Port, Direction, Stop, Button
-from pybricks.tools import StopWatch, wait, multitask, run_task
-
-
-hub = PrimeHub()
-
-motor_esq = Motor(Port.B, Direction.CLOCKWISE)
-motor_dir = Motor(Port.A, Direction.COUNTERCLOCKWISE) 
-
-motor_aux_esq = Motor(Port.C)
-motor_aux_dir = Motor(Port.D)
-
-
-relogio_global = StopWatch()
-target_heading = 0.0  
-
-# Ganhos moderados: a derivada agora é calculada em graus/segundo.
-# Ganhos muito altos fazem o robô alternar a correção e "tremer".
-KP_LINE = 3.5
-KI_LINE = 0.002
-KD_LINE = 0.18
-
-def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
+def girar(graus, velocidade_maxima):
     global target_heading
-    motor_esq.reset_angle(0)
-    motor_dir.reset_angle(0)
-
-    if distancia_graus < 1:
-        distancia_graus = abs(distancia_graus)
-        velocidade_base = -abs(velocidade_base)
+    atualizar_target_heading(graus)
 
     angulo_inicial = hub.imu.heading()
-    erro_inicial = erro_angular(target_heading, angulo_inicial)
+    erro_anterior = (target_heading - angulo_inicial + 180) % 360 - 180
 
-    erro_anterior = erro_inicial
-    integral = 0.0
     cronometro = StopWatch()
-    erro_filtrado = erro_inicial
 
-    # Configurações de zonas de velocidade (Ajustáveis)
-    zona_aceleracao = distancia_graus * 0.15   # Primeiros 20% do trajeto acelerando
-    zona_deceleracao = distancia_graus * 0.85 # A partir de 75% do trajeto desacelerando
-    velocidade_inicial = velocidade_base * 0.6 # Começa com 30% da velocidade base
-    velocidade_final = velocidade_base * 0.6   # Termina com 25% da velocidade base
-
-    while abs(motor_esq.angle()) < distancia_graus:
+    while True:
         verificar_voltar_menu()
-        graus_atuais = abs(motor_esq.angle())
 
-        # 1. ZONA DE ACELERAÇÃO
-        if graus_atuais < zona_aceleracao:
-            proporcao = graus_atuais / zona_aceleracao
-            vel_alvo = velocidade_inicial + (velocidade_base - velocidade_inicial) * proporcao
-        # 2. ZONA DE DESACELERACÃO
-        elif graus_atuais > zona_deceleracao:
-            graus_dentro_da_decel = graus_atuais - zona_deceleracao
-            distancia_total_decel = distancia_graus - zona_deceleracao
-            proporcao_decel = 1.0 - (graus_dentro_da_decel / distancia_total_decel)
-            # Garante que a proporção não negative por erro de leitura de passos
-            proporcao_decel = max(0.0, min(1.0, proporcao_decel))
-            vel_alvo = velocidade_final + (velocidade_base - velocidade_final) * proporcao_decel
-        # 3. ZONA DE CRUZEIRO (Velocidade Máxima Estabilizada)
-        else:
-            vel_alvo = velocidade_base
-
-        # PID de Estabilização Linear
         angulo_atual = hub.imu.heading()
-        erro_bruto = (target_heading - angulo_atual + 180) % 360 - 180
+        erro = (target_heading - angulo_atual + 180) % 360 - 180
 
-        # Filtro simples para não transmitir todo o ruído do IMU aos motores.
-        erro_filtrado = (0.75 * erro_filtrado) + (0.25 * erro_bruto)
+        # Tolerância ligeiramente maior para concluir mais rápido
+        if abs(erro) < 1.0 and abs(motor_esq.speed()) < 20:
+            break
+
         tempo = cronometro.time()
         cronometro.reset()
+
         dt = max(0.01, min(0.1, tempo / 1000))
 
-        # Integral em grau-segundo, com limite anti-windup.
-        if abs(erro_filtrado) < 8:
-            integral += erro_filtrado * dt
-            integral = limitar(integral, -40, 40)
-        else:
-            integral = 0
+        derivada = ((erro - erro_anterior + 180) % 360 - 180) / dt
+        erro_anterior = erro
 
-        derivada = (erro_filtrado - erro_anterior) / dt
-        erro_anterior = erro_filtrado
+        sinal_controle = (erro * KP_TURN) + (derivada * KD_TURN)
 
-        correcao = (erro_filtrado * KP_LINE) + (integral * KI_LINE) + (derivada * KD_LINE)
-        correcao = limitar(correcao, -abs(vel_alvo) * 0.45, abs(vel_alvo) * 0.45)
+        # Limite máximo de velocidade
+        sinal_controle = max(
+            -velocidade_maxima,
+            min(velocidade_maxima, sinal_controle)
+        )
 
-        motor_esq.run(vel_alvo - correcao)
-        motor_dir.run(vel_alvo + correcao)
+        # Velocidade mínima longe do alvo
+        if abs(sinal_controle) < 22 and abs(erro) >= 2.0:
+            sinal_controle = 22 if erro > 0 else -22
 
-        print("[POSSIBILIDADE B] T:{}ms | Progresso: {}/{} | VelAlvo: {:.1f} | GiroErro: {}".format(
-            relogio_global.time(), graus_atuais, distancia_graus, vel_alvo, erro_filtrado
-        ))
-
-        if usar_sensores_parada:
-            if sensor_meio.reflection() < 18 or sensor_direita.reflection() < 18:
-                print("[SENSOR ALERTA B]: Linha detectada. Forçando parada.")
-                break
+        motor_esq.run(-sinal_controle)
+        motor_dir.run(sinal_controle)
 
         wait(10)
 
-    motor_esq.hold()
+    # Frenagem em vez de deixar os motores livres
+    motor_esq.brake()
+    motor_dir.brake()
 
-
-    motor_dir.hold()
-    wait(10)
-
-def auxD(posicao, velocidade=-400):
-    print(velocidade)
-    if posicao == "inicio":
-        run_until_stalled_interrompivel(motor_aux_esq, velocidade)
-        wait(100)
-    else:
-        posicao = int(posicao)
-        run_angle_interrompivel(motor_aux_esq, velocidade, posicao)
-
-def auxE(posicao, velocidade=-400):
-    if posicao == "inicio":
-        run_until_stalled_interrompivel(motor_aux_dir, -400)
-        wait(100)
-    else:
-        posicao = int(posicao)
-        run_angle_interrompivel(motor_aux_dir, 350, posicao)
+    print('Rotação concluída em {}°'.format(hub.imu.heading()))
