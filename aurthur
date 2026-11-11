@@ -1,4 +1,2 @@
-
-def atualizar_target_heading(novo_angulo):
-    global target_heading
-    target_heading = float(novo_angulo)
+def erro_angular(alvo, atual):
+    return (alvo - atual + 180) % 360 - 180
