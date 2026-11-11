@@ -84,7 +84,7 @@ def run_angle_interrompivel(motor, velocidade, angulo):
 def run_until_stalled_interrompivel(motor, velocidade):
     motor.run(velocidade)
 
-    while not motor.stalled():
+    while not motor.stalled(): 
         verificar_voltar_menu()
         wait(10)
 
@@ -157,6 +157,65 @@ def girar(graus, velocidade_maxima):
     motor_dir.brake()
 
     print('Rotação concluída em {}°'.format(hub.imu.heading()))
+
+def girar_pivo(graus, velocidade_maxima, roda="dir"):
+    # roda = a roda que se MOVE ("dir" ou "esq"). A outra fica travada como eixo do giro.
+    atualizar_target_heading(graus)
+
+    if roda == "dir":
+        motor_movel = motor_dir
+        motor_parado = motor_esq
+        sentido = 1
+    else:
+        motor_movel = motor_esq
+        motor_parado = motor_dir
+        sentido = -1
+
+    # Trava a roda que serve de pivô
+    motor_parado.hold()
+
+    angulo_inicial = hub.imu.heading()
+    erro_anterior = erro_angular(target_heading, angulo_inicial)
+
+    cronometro = StopWatch()
+
+    while True:
+        verificar_voltar_menu()
+
+        angulo_atual = hub.imu.heading()
+        erro = erro_angular(target_heading, angulo_atual)
+
+        if abs(erro) < 1.0 and abs(motor_movel.speed()) < 20:
+            break
+
+        tempo = cronometro.time()
+        cronometro.reset()
+
+        dt = max(0.01, min(0.1, tempo / 1000))
+
+        derivada = erro_angular(erro_anterior, erro) / dt
+        erro_anterior = erro
+
+        sinal_controle = (erro * KP_TURN) + (derivada * KD_TURN)
+
+        # Limite máximo de velocidade
+        sinal_controle = max(
+            -velocidade_maxima,
+            min(velocidade_maxima, sinal_controle)
+        )
+
+        # Velocidade mínima longe do alvo
+        if abs(sinal_controle) < 22 and abs(erro) >= 2.0:
+            sinal_controle = 22 if erro > 0 else -22
+
+        motor_movel.run(sentido * sinal_controle)
+
+        wait(10)
+
+    motor_esq.brake()
+    motor_dir.brake()
+
+    print('Giro pivô concluído em {}°'.format(hub.imu.heading()))
 
 
 def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
@@ -299,15 +358,9 @@ async def moverlixo_async(velocidade, graus):
         motor_dir.run_angle(velocidade, graus)
     )
 
-async def meiopivo_async13(velocidade, graus):
-    await multitask(
-        motor_esq.run_angle(velocidade, graus),
-    )
+def meiopivo_async22(graus, velocidade):
+    motor_dir.run_angle(graus, velocidade)
 
-async def meiopivo_async22(velocidade, graus):
-    await multitask(
-        motor_dir.run_angle(velocidade, graus),
-    )
 
 async def pivo():
     await multitask(meiopivo_async(700, 100), pivo22(90, 700))
@@ -383,31 +436,30 @@ def R4():
     inicial()
     run_task(R4_async())
 
-
-#Revisar!!!
-
-async def R5_async():
-    inicial()
-    mover(1470, 870)
-    girar(38, 900)
-    mover(340, 900)
-    auxD(230, 700)
-    girar(0, 800)
-    mover(-120, 800)
-    #paramos aqui
-    girar(55, 900)
-    mover(-250, 900)
-    girar(-13, 800)
-    mover(220, 800)
-    girar(2, 800)
-    mover(-105, 900)
-    girar(-10, 800)
-    mover(-50, 900)
-    await pivo()
-
 def R5():
     inicial()
-    run_task(R5_async())
+    mover(1450, 900)
+    girar(39, 900)
+    mover(350, 900)
+    auxD(150, 900)
+    auxD(-150, 900)
+    girar(0, 900)
+    mover(-400, 900)
+    mover(250, 900)
+    auxD(-100, 900)
+    mover(-100, 900)
+    girar(-90, 900)
+    mover(200, 900)
+    girar(-10, 900)
+    mover(200, 900)
+    girar(9, 900)
+    mover(-200, 900)
+    mover(-42, 900)
+    girar_pivo(-200, 900, roda="esq")
+    mover(-240, 900)
+    girar(-140, 900)
+    mover(-200, 200)
+
 
 def R6():
     inicial()
@@ -423,6 +475,7 @@ def R6():
     mover(44, 800)
     auxE(-300, 100)
     mover(100, 1000)
+    
 
 
 def R7():
@@ -438,7 +491,11 @@ def R7():
 
 def teste():
     inicial()
-    mover(2000, 900)
+    mover(-42, 900)
+    girar_pivo(-200, 900, roda="esq")
+    mover(-240, 900)
+    girar(-140, 900)
+    mover(-200, 200)
 
 
 
