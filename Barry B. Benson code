@@ -4,7 +4,6 @@ from pybricks.pupdevices import Motor, ColorSensor
 from pybricks.parameters import Port, Direction, Stop, Button
 from pybricks.tools import StopWatch, wait, multitask, run_task
 
-
 hub = PrimeHub()
 
 motor_esq = Motor(Port.B, Direction.CLOCKWISE)
@@ -27,7 +26,6 @@ KD_LINE = 0.18
 
 KP_TURN = 8
 KD_TURN = 0.25
-
 
 
 def testar_imu_parado():
@@ -55,7 +53,6 @@ def testar_imu_parado():
 class VoltarMenu(Exception):
     pass
 
-
 def parar_todos_motores():
     motor_esq.stop()
     motor_dir.stop()
@@ -72,14 +69,12 @@ def verificar_voltar_menu():
         esperar_soltar_botoes()
         raise VoltarMenu
 
-
 def run_angle_interrompivel(motor, velocidade, angulo):
     motor.run_angle(velocidade, angulo, then=Stop.HOLD, wait=False)
 
     while not motor.done():
         verificar_voltar_menu()
         wait(10)
-
 
 def run_until_stalled_interrompivel(motor, velocidade):
     motor.run(velocidade)
@@ -90,7 +85,6 @@ def run_until_stalled_interrompivel(motor, velocidade):
 
     motor.stop()
 
-
 def atualizar_target_heading(novo_angulo):
     global target_heading
     target_heading = float(novo_angulo)
@@ -98,15 +92,12 @@ def atualizar_target_heading(novo_angulo):
 def erro_angular(alvo, atual):
     return (alvo - atual + 180) % 360 - 180
 
-
 def limitar(valor, minimo, maximo):
     if valor < minimo:
         return minimo
     if valor > maximo:
         return maximo
     return valor
-
-
 
 def girar(graus, velocidade_maxima):
     global target_heading
@@ -217,7 +208,6 @@ def girar_pivo(graus, velocidade_maxima, roda="dir"):
 
     print('Giro pivô concluído em {}°'.format(hub.imu.heading()))
 
-
 def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
     global target_heading
     motor_esq.reset_angle(0)
@@ -302,7 +292,6 @@ def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
     motor_dir.hold()
     wait(10)
 
-
 def auxD(posicao, velocidade=-400):
     print(velocidade)
     if posicao == "inicio":
@@ -319,7 +308,6 @@ def auxE(posicao, velocidade=-400):
     else:
         posicao = int(posicao)
         run_angle_interrompivel(motor_aux_dir, 350, posicao)
-
 
 def inicial():
     hub.imu.reset_heading(0)
@@ -361,7 +349,6 @@ async def moverlixo_async(velocidade, graus):
 def meiopivo_async22(graus, velocidade):
     motor_dir.run_angle(graus, velocidade)
 
-
 async def pivo():
     await multitask(meiopivo_async(700, 100), pivo22(90, 700))
 
@@ -389,15 +376,13 @@ def R1():
 
 def R2():
     inicial()
-    mover(1713, 900)
-    auxE(90, 300)
-    mover(-27, 900)
-    auxE(130, 300)
-    mover(100, 900)
-    auxE(-100, 700)
-    mover(-160, 700)
-    auxE(90, 700)
-    mover(200, 700)
+    mover(1800, 900)
+    auxE(-540, 900)
+    girar(30, 900)
+    auxD(-67, 800)
+    mover(67, 900)
+    auxD(100, 700)
+    mover(-2000)    
 
 def R3():
     inicial()
@@ -410,12 +395,12 @@ def R3():
     girar(-90, 900)
     mover(-137, 900)
     mover(1000, 900)
-    girar(-16, 600)
-    girar(-100, 800)
+    girar(-62, 600)
+    girar(-105, 800)
     mover(467, 900)
-    auxE(-300, 900)
+    auxE(-600, 900)
     mover(100, 900)
-    auxE(200, 900)
+    auxE(300, 900)
     mover(-400, 700)
 
 async def R4_async():
@@ -450,17 +435,20 @@ def R5():
     mover(-100, 900)
     girar(-90, 900)
     mover(200, 900)
-    auxD(-300,)
     girar(-10, 900)
     mover(200, 900)
     girar(9, 900)
     mover(-180, 900)
-    mover(-42, 900)
+    mover(-32, 900)
     girar_pivo(-200, 900, roda="esq")
     mover(-240, 900)
     girar(-140, 900)
     mover(-200, 200)
-
+    mover(150, 900)
+    girar(100, 900)
+    mover(500, 900)
+    girar(180, 900)
+    mover(3000, 900)
 
 def R6():
     inicial()
@@ -476,29 +464,44 @@ def R6():
     mover(44, 800)
     auxE(-300, 100)
     mover(100, 1000)
-    
-
 
 def R7():
     inicial()
-    mover(425, 900)
-    auxE(230, 900)
+    mover(550, 900)
+    auxE(260, 900)
     auxE(-160, 200)
-    mover(-470, 900)
-    esperar(150)
-    mover(370, 900)
-    girar(5, 900)
-    mover(100, 900)
+    mover(-530, 900)
+    esperar(100)
+    mover(550, 900)
+    mover(-30, 900)
+    mover(70, 900)
+    mover(150, 900)
+    mover(-125, 900)
+    mover(150, 900)
+    mover(-125, 900)
+    mover(150, 900)
+    mover(-125, 900)
+    mover(150, 900)
+    mover(-125, 900)
+    mover(150, 900)
+    mover(-125, 900)
+    mover(150, 900)
+    mover(-125, 900)
+    
 
-def teste():
+
+async def teste_async():
     inicial()
-    mover(-42, 900)
-    girar_pivo(-200, 900, roda="esq")
-    mover(-240, 900)
-    girar(-140, 900)
-    mover(-200, 200)
+    mover(850, 900)
+    auxE(500, 900)
+    await multitask(moverlixo_async(-1000, 800), auxE_async(700, 900))
+    mover(-942, 1000)
 
+def teste_async67():
+    run_task(teste_async())
 
+def teste67():
+    inicial()
 
 OPCOES_MENU = (
     ("R1", R1),
@@ -508,7 +511,8 @@ OPCOES_MENU = (
     ("R5", R5),
     ("R6", R6),
     ("R7", R7),
-    ("RT", teste),
+    ("R8", teste_async67),
+    ("R9", teste67),
 )
 
 
