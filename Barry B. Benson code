@@ -14,6 +14,19 @@ motor_aux_dir = Motor(Port.D)
 
 
 relogio_global = StopWatch()
+
+# Cronometro unico do ROUND FLL: inicia na primeira R1 e vale para R1-R9.
+TEMPO_ROUND_MS = 150000  # 2 minutos e 30 segundos
+cronometro_round = StopWatch()
+round_iniciado = False
+round_esgotado = False
+
+# Cada aviso aparece apenas uma vez durante o round.
+aviso_2min = False
+aviso_1min30 = False
+aviso_1min = False
+aviso_30s = False
+
 target_heading = 0.0  
 
 
@@ -27,6 +40,28 @@ KD_LINE = 0.18
 KP_TURN = 8
 KD_TURN = 0.25
 
+C4 = 262
+Db4 = 277
+D4 = 294
+Eb4 = 311
+E4 = 330
+F4 = 349
+Gb4 = 370
+G4 = 392
+Ab4 = 415
+A4 = 440
+Bb4 = 466
+B4 = 494
+Db5 = 554
+
+musica = [
+    (Db5, 200), (A4, 200), (B4, 200), (Db5, 500),
+    (A4, 470), (A4, 170), (Db5, 200), (B4, 500),
+    (A4, 400), (Gb4, 400), (A4, 400), (B4, 400),
+    (A4, 400), (Gb4, 200), (Ab4, 150), (Gb4, 200),
+    (Ab4, 150), (A4, 400), (B4, 500)
+
+]
 
 def testar_imu_parado():
     parar_todos_motores()
@@ -50,8 +85,73 @@ def testar_imu_parado():
 
         wait(200)
 
+def tocar(nota, tempo):
+    hub.speaker.beep(nota, tempo)
+    wait(40)
+
+def pausa(tempo):
+    wait(tempo)
+
 class VoltarMenu(Exception):
     pass
+
+def iniciar_cronometro_round():
+    global round_iniciado, round_esgotado
+    if not round_iniciado:
+        cronometro_round.reset()
+        round_iniciado = True
+        round_esgotado = False
+        print("ROUND FLL iniciado: 2:30")
+
+def tempo_round_restante():
+    if not round_iniciado:
+        return TEMPO_ROUND_MS
+    return max(0, TEMPO_ROUND_MS - cronometro_round.time())
+
+def marcar_round_esgotado():
+    global round_esgotado
+    if not round_esgotado:
+        round_esgotado = True
+        parar_todos_motores()
+
+        # Toca a musica uma unica vez, quando o round chega a 0:00.
+        for nota, tempo in musica:
+            tocar(nota, tempo)
+
+def avisar_tempo_round():
+    global aviso_2min, aviso_1min30, aviso_1min, aviso_30s
+
+    if not round_iniciado or round_esgotado:
+        return
+
+    tempo_decorrido = cronometro_round.time()
+
+    # Os avisos são disparados pelo tempo decorrido desde o início da R1.
+    if tempo_decorrido >= 30000 and not aviso_2min:
+        print("LOG: Faltam 2 minutos!")
+        aviso_2min = True
+
+    if tempo_decorrido >= 60000 and not aviso_1min30:
+        print("LOG: Falta 1 minuto e 30 segundos!")
+        aviso_1min30 = True
+
+    if tempo_decorrido >= 90000 and not aviso_1min:
+        print("LOG: Falta 1 minuto!")
+        aviso_1min = True
+
+    if tempo_decorrido >= 120000 and not aviso_30s:
+        print("LOG: Faltam 30 segundos!")
+        aviso_30s = True
+
+
+def verificar_tempo_round():
+    global round_esgotado
+    if round_iniciado and not round_esgotado:
+        avisar_tempo_round()
+        if cronometro_round.time() >= TEMPO_ROUND_MS:
+            marcar_round_esgotado()
+            print("TEMPO DO ROUND ESGOTADO")
+            raise VoltarMenu
 
 def parar_todos_motores():
     motor_esq.stop()
@@ -64,6 +164,9 @@ def esperar_soltar_botoes():
         wait(10)
 
 def verificar_voltar_menu():
+    # O tempo e compartilhado por todas as runs e continua no menu.
+    verificar_tempo_round()
+
     if Button.CENTER in hub.buttons.pressed():
         parar_todos_motores()
         esperar_soltar_botoes()
@@ -99,199 +202,335 @@ def limitar(valor, minimo, maximo):
         return maximo
     return valor
 
-def girar(graus, velocidade_maxima):
-    global target_heading
-    atualizar_target_heading(graus)
-
-    angulo_inicial = hub.imu.heading()
-    erro_anterior = (target_heading - angulo_inicial + 180) % 360 - 180
-
-    cronometro = StopWatch()
-
-    while True:
-        verificar_voltar_menu()
-
-        angulo_atual = hub.imu.heading()
-        erro = (target_heading - angulo_atual + 180) % 360 - 180
-
-        # Tolerância ligeiramente maior para concluir mais rápido
-        if abs(erro) < 1.0 and abs(motor_esq.speed()) < 20:
-            break
-
-        tempo = cronometro.time()
-        cronometro.reset()
-
-        dt = max(0.01, min(0.1, tempo / 1000))
-
-        derivada = ((erro - erro_anterior + 180) % 360 - 180) / dt
-        erro_anterior = erro
-
-        sinal_controle = (erro * KP_TURN) + (derivada * KD_TURN)
-
-        # Limite máximo de velocidade
-        sinal_controle = max(
-            -velocidade_maxima,
-            min(velocidade_maxima, sinal_controle)
-        )
-
-        # Velocidade mínima longe do alvo
-        if abs(sinal_controle) < 22 and abs(erro) >= 2.0:
-            sinal_controle = 22 if erro > 0 else -22
-
-        motor_esq.run(-sinal_controle)
-        motor_dir.run(sinal_controle)
-
-        wait(10)
-
-    # Frenagem em vez de deixar os motores livres
-    motor_esq.brake()
-    motor_dir.brake()
-
-    print('Rotação concluída em {}°'.format(hub.imu.heading()))
-
-def girar_pivo(graus, velocidade_maxima, roda="dir"):
-    # roda = a roda que se MOVE ("dir" ou "esq"). A outra fica travada como eixo do giro.
-    atualizar_target_heading(graus)
-
-    if roda == "dir":
-        motor_movel = motor_dir
-        motor_parado = motor_esq
-        sentido = 1
-    else:
-        motor_movel = motor_esq
-        motor_parado = motor_dir
-        sentido = -1
-
-    # Trava a roda que serve de pivô
-    motor_parado.hold()
-
-    angulo_inicial = hub.imu.heading()
-    erro_anterior = erro_angular(target_heading, angulo_inicial)
-
-    cronometro = StopWatch()
-
-    while True:
-        verificar_voltar_menu()
-
-        angulo_atual = hub.imu.heading()
-        erro = erro_angular(target_heading, angulo_atual)
-
-        if abs(erro) < 1.0 and abs(motor_movel.speed()) < 20:
-            break
-
-        tempo = cronometro.time()
-        cronometro.reset()
-
-        dt = max(0.01, min(0.1, tempo / 1000))
-
-        derivada = erro_angular(erro_anterior, erro) / dt
-        erro_anterior = erro
-
-        sinal_controle = (erro * KP_TURN) + (derivada * KD_TURN)
-
-        # Limite máximo de velocidade
-        sinal_controle = max(
-            -velocidade_maxima,
-            min(velocidade_maxima, sinal_controle)
-        )
-
-        # Velocidade mínima longe do alvo
-        if abs(sinal_controle) < 22 and abs(erro) >= 2.0:
-            sinal_controle = 22 if erro > 0 else -22
-
-        motor_movel.run(sentido * sinal_controle)
-
-        wait(10)
-
-    motor_esq.brake()
-    motor_dir.brake()
-
-    print('Giro pivô concluído em {}°'.format(hub.imu.heading()))
-
 def mover(distancia_graus, velocidade_base, usar_sensores_parada=False):
     global target_heading
+
+    # Zera os encoders antes de iniciar
     motor_esq.reset_angle(0)
     motor_dir.reset_angle(0)
 
-    if distancia_graus < 1:
-        distancia_graus = abs(distancia_graus)
-        velocidade_base = -abs(velocidade_base)
+    # Determina o sentido da movimentação
+    distancia_alvo = abs(float(distancia_graus))
+    sentido = -1 if distancia_graus < 0 else 1
+    velocidade_maxima = abs(float(velocidade_base))
 
-    angulo_inicial = hub.imu.heading()
-    erro_inicial = erro_angular(target_heading, angulo_inicial)
+    if distancia_alvo == 0 or velocidade_maxima == 0:
+        motor_esq.hold()
+        motor_dir.hold()
+        return
 
-    erro_anterior = erro_inicial
+    # Perfil de aceleração e desaceleração
+    ACELERACAO = 1200.0  # Graus/s²
+
+    velocidade_minima = min(
+        120.0,
+        max(60.0, velocidade_maxima * 0.20)
+    )
+
+    # Inicialização do PID
+    erro_filtrado = erro_angular(
+        target_heading,
+        hub.imu.heading()
+    )
+
+    erro_anterior = erro_filtrado
     integral = 0.0
+
     cronometro = StopWatch()
-    erro_filtrado = erro_inicial
+    cronometro_print = StopWatch()
 
-    # Configurações de zonas de velocidade (Ajustáveis)
-    zona_aceleracao = distancia_graus * 0.15   # Primeiros 20% do trajeto acelerando
-    zona_deceleracao = distancia_graus * 0.85 # A partir de 75% do trajeto desacelerando
-    velocidade_inicial = velocidade_base * 0.6 # Começa com 30% da velocidade base
-    velocidade_final = velocidade_base * 0.6   # Termina com 25% da velocidade base
+    primeira_iteracao = True
 
-    while abs(motor_esq.angle()) < distancia_graus:
+    while True:
+
         verificar_voltar_menu()
-        graus_atuais = abs(motor_esq.angle())
 
-        # 1. ZONA DE ACELERAÇÃO
-        if graus_atuais < zona_aceleracao:
-            proporcao = graus_atuais / zona_aceleracao
-            vel_alvo = velocidade_inicial + (velocidade_base - velocidade_inicial) * proporcao
-        # 2. ZONA DE DESACELERACÃO
-        elif graus_atuais > zona_deceleracao:
-            graus_dentro_da_decel = graus_atuais - zona_deceleracao
-            distancia_total_decel = distancia_graus - zona_deceleracao
-            proporcao_decel = 1.0 - (graus_dentro_da_decel / distancia_total_decel)
-            # Garante que a proporção não negative por erro de leitura de passos
-            proporcao_decel = max(0.0, min(1.0, proporcao_decel))
-            vel_alvo = velocidade_final + (velocidade_base - velocidade_final) * proporcao_decel
-        # 3. ZONA DE CRUZEIRO (Velocidade Máxima Estabilizada)
-        else:
-            vel_alvo = velocidade_base
+        # 1. LEITURA DOS DOIS ENCODERS
 
-        # PID de Estabilização Linear
+        progresso_esq = motor_esq.angle() * sentido
+        progresso_dir = motor_dir.angle() * sentido
+
+        graus_atuais = max(
+            0.0,
+            (progresso_esq + progresso_dir) / 2.0
+        )
+
+        if graus_atuais >= distancia_alvo:
+            break
+
+        # 2. DISTÂNCIA RESTANTE
+
+        distancia_restante = distancia_alvo - graus_atuais
+
+        distancia_para_rampa = min(
+            graus_atuais,
+            distancia_restante
+        )
+
+        # 3. PERFIL DE VELOCIDADE
+
+        velocidade_perfil = (
+            velocidade_minima ** 2 +
+            2.0 * ACELERACAO * distancia_para_rampa
+        ) ** 0.5
+
+        velocidade_magnitude = min(
+            velocidade_maxima,
+            velocidade_perfil
+        )
+
+        vel_alvo = sentido * velocidade_magnitude
+
+        # 4. LEITURA DA IMU
+
         angulo_atual = hub.imu.heading()
-        erro_bruto = (target_heading - angulo_atual + 180) % 360 - 180
 
-        # Filtro simples para não transmitir todo o ruído do IMU aos motores.
-        erro_filtrado = (0.75 * erro_filtrado) + (0.25 * erro_bruto)
-        tempo = cronometro.time()
+        erro_bruto = erro_angular(
+            target_heading,
+            angulo_atual
+        )
+
+        # Filtro angular que evita problemas na passagem por +/-180 graus
+        variacao_erro = erro_angular(
+            erro_bruto,
+            erro_filtrado
+        )
+
+        erro_filtrado = (
+            erro_filtrado + 0.25 * variacao_erro + 180
+        ) % 360 - 180
+
+        # 5. CÁLCULO DO TEMPO REAL
+
+        tempo_ms = cronometro.time()
         cronometro.reset()
-        dt = max(0.01, min(0.1, tempo / 1000))
 
-        # Integral em grau-segundo, com limite anti-windup.
+        dt = max(0.001, tempo_ms / 1000.0)
+
+        # 6. INTEGRAL
+
         if abs(erro_filtrado) < 8:
-            integral += erro_filtrado * dt
-            integral = limitar(integral, -40, 40)
-        else:
-            integral = 0
 
-        derivada = (erro_filtrado - erro_anterior) / dt
+            integral += erro_filtrado * dt
+
+            integral = limitar(
+                integral,
+                -40,
+                40
+            )
+
+        else:
+            integral = 0.0
+
+        # 7. DERIVADA
+
+        if primeira_iteracao:
+            derivada = 0.0
+            primeira_iteracao = False
+
+        else:
+            derivada = erro_angular(
+                erro_filtrado,
+                erro_anterior
+            ) / dt
+
         erro_anterior = erro_filtrado
 
-        correcao = (erro_filtrado * KP_LINE) + (integral * KI_LINE) + (derivada * KD_LINE)
-        correcao = limitar(correcao, -abs(vel_alvo) * 0.45, abs(vel_alvo) * 0.45)
+        # 8. CONTROLE PID
+
+        correcao = (
+            erro_filtrado * KP_LINE +
+            integral * KI_LINE +
+            derivada * KD_LINE
+        )
+
+        correcao = limitar(
+            correcao,
+            -velocidade_magnitude * 0.45,
+            velocidade_magnitude * 0.45
+        )
+
+        # 9. COMANDO DOS MOTORES
 
         motor_esq.run(vel_alvo - correcao)
         motor_dir.run(vel_alvo + correcao)
 
-        print("[POSSIBILIDADE B] T:{}ms | Progresso: {}/{} | VelAlvo: {:.1f} | GiroErro: {}".format(
-            relogio_global.time(), graus_atuais, distancia_graus, vel_alvo, erro_filtrado
-        ))
+        # 10. MONITORAMENTO A CADA 200 MS
+
+        if cronometro_print.time() >= 200:
+
+            diferenca_encoders = abs(
+                progresso_esq - progresso_dir
+            )
+
+            cronometro_print.reset()
 
         if usar_sensores_parada:
-            if sensor_meio.reflection() < 18 or sensor_direita.reflection() < 18:
-                print("[SENSOR ALERTA B]: Linha detectada. Forçando parada.")
+            if (
+                sensor_meio.reflection() < 18 or
+                sensor_direita.reflection() < 18
+            ):
+                print(
+                    "[SENSOR ALERTA]: Linha detectada. "
+                    "Forçando parada."
+                )
                 break
-
         wait(10)
 
     motor_esq.hold()
     motor_dir.hold()
+
     wait(10)
 
+    final_esq = motor_esq.angle() * sentido
+    final_dir = motor_dir.angle() * sentido
+
+    media_final = (final_esq + final_dir) / 2.0
+
+    print(
+        "[MOVER FINAL] Esquerdo: {:.1f} | "
+        "Direito: {:.1f} | Média: {:.1f} | "
+        "Diferença: {:.1f}".format(
+            final_esq,
+            final_dir,
+            media_final,
+            abs(final_esq - final_dir)
+        )
+    )
+
+def girar(graus, velocidade_maxima):
+    global target_heading
+    atualizar_target_heading(graus)
+
+    velocidade_maxima = abs(float(velocidade_maxima))
+    if velocidade_maxima <= 0:
+        motor_esq.brake()
+        motor_dir.brake()
+        return False
+
+    tolerancia = 1.0
+    velocidade_tolerancia = 20
+    amostras_estaveis = 0
+    derivada_filtrada = 0.0
+    alpha = 0.35
+
+    erro_inicial = erro_angular(
+        target_heading,
+        hub.imu.heading()
+    )
+    erro_anterior = erro_inicial
+    primeira_iteracao = True
+
+    velocidade_minima = min(
+        velocidade_maxima,
+        30,
+        max(10, velocidade_maxima * 0.04)
+    )
+    tempo_limite = limitar(
+        3000 + abs(erro_inicial) * 20 *
+        (900 / max(velocidade_maxima, 150)),
+        3000,
+        15000
+    )
+    cronometro = StopWatch()
+    cronometro_dt = StopWatch()
+    while True:
+        verificar_voltar_menu()
+        angulo_atual = hub.imu.heading()
+
+        erro = erro_angular(
+            target_heading,
+            angulo_atual
+        )
+        if abs(erro) <= tolerancia:
+
+            motor_esq.brake()
+            motor_dir.brake()
+
+            velocidade_esq = abs(motor_esq.speed())
+            velocidade_dir = abs(motor_dir.speed())
+
+            if (
+                velocidade_esq < velocidade_tolerancia
+                and velocidade_dir < velocidade_tolerancia
+            ):
+
+                amostras_estaveis += 1
+                if amostras_estaveis >= 3:
+                    break
+            else:
+                amostras_estaveis = 0
+            wait(10)
+            continue
+        else:
+            amostras_estaveis = 0
+
+        if cronometro.time() >= tempo_limite:
+            motor_esq.brake()
+            motor_dir.brake()
+
+            print("[GIRO] Tempo limite excedido.")
+
+            raise VoltarMenu
+
+        tempo_ms = cronometro_dt.time()
+        cronometro_dt.reset()
+        dt = max(0.01, tempo_ms / 1000.0)
+
+        if primeira_iteracao:
+            derivada_bruta = 0.0
+            primeira_iteracao = False
+        else:
+            diferenca_erro = erro_angular(
+                erro,
+                erro_anterior
+            )
+            derivada_bruta = diferenca_erro / dt
+        erro_anterior = erro
+        derivada_filtrada = (
+            (1 - alpha) * derivada_filtrada
+            + alpha * derivada_bruta
+        )
+        controle = (
+            erro * KP_TURN
+            + derivada_filtrada * KD_TURN
+        )
+        controle = limitar(
+            controle,
+            -velocidade_maxima,
+            velocidade_maxima
+        )
+
+        if (
+            abs(erro) > 2.0
+            and controle * erro > 0
+            and abs(controle) < velocidade_minima
+        ):
+            controle = (
+                velocidade_minima
+                if erro > 0
+                else -velocidade_minima
+            )
+        motor_esq.run(-controle)
+        motor_dir.run(controle)
+
+        wait(10)
+
+    motor_esq.brake()
+    motor_dir.brake()
+    wait(50)
+    erro_final = erro_angular(
+        target_heading,
+        hub.imu.heading()
+    )
+    print(
+        "[GIRO FINAL] Alvo: {} | Atual: {:.2f} | Erro: {:.2f}".format(
+            target_heading,
+            hub.imu.heading(),
+            erro_final
+        )
+    )
+    return abs(erro_final) <= 2.0
 def auxD(posicao, velocidade=-400):
     print(velocidade)
     if posicao == "inicio":
@@ -314,7 +553,10 @@ def inicial():
     atualizar_target_heading(0)
 
 async def esperar_async(tempo_ms):
-    await wait(tempo_ms)
+    cronometro_espera = StopWatch()
+    while cronometro_espera.time() < tempo_ms:
+        verificar_voltar_menu()
+        await wait(10)
 
 def esperar(tempo):
     for _ in range(tempo):
@@ -324,7 +566,6 @@ def esperar(tempo):
 def moverlixo(velocidade):
     motor_dir.run(velocidade)
     motor_esq.run(velocidade)
-
 
 async def auxD_async(posicao, velocidade=-400):
     if posicao == "inicio":
@@ -346,17 +587,22 @@ async def moverlixo_async(velocidade, graus):
         motor_dir.run_angle(velocidade, graus)
     )
 
-def meiopivo_async22(graus, velocidade):
-    motor_dir.run_angle(graus, velocidade)
+async def executar_tarefa_com_interrupcao(tarefa):
+    try:
+        await tarefa
+    except VoltarMenu:
+        parar_todos_motores()
+        if round_esgotado:
+            print("Tempo do round esgotado. Tarefa encerrada.")
+        else:
+            print("Tarefa interrompida. Motores parados.")
 
-async def pivo():
-    await multitask(meiopivo_async(700, 100), pivo22(90, 700))
 
-async def R1_async():
+def R1():
     inicial()
     mover(530, 367)
     mover(-1000, 999)
-    await esperar_async(1000)
+    esperar(100)
     mover(1300, 900)
     girar(-31, 800)
     mover(422, 550)
@@ -364,25 +610,28 @@ async def R1_async():
     mover(-442, 900)
     girar(18, 900)
     mover(-1367, 900)
-    await esperar_async(1500)
+    esperar(150)
     inicial()
     mover(850, 900)
     auxE(500, 900)
-    await multitask(moverlixo_async(-1000, 800), auxE_async(700, 900))
+    multitask(moverlixo_async(-1000, 800), auxE_async(700, 900))
     mover(-942, 1000)
-
-def R1():
-    run_task(R1_async())
 
 def R2():
     inicial()
-    mover(1800, 900)
-    auxE(-540, 900)
-    girar(30, 900)
-    auxD(-67, 800)
-    mover(67, 900)
-    auxD(100, 700)
-    mover(-2000)    
+    mover(1804, 900)
+    auxE(-1040, 1000)
+    girar(50, 900)
+    auxE(-200, 900)
+    girar(0, 900)
+    auxE(-700, 1000)
+    girar(50, 900)
+    auxD(-132, 800)
+    mover(162, 900)
+    auxD(140, 200)
+    mover(-240, 800)
+    girar(0, 800)
+    mover(-2000, 900)
 
 def R3():
     inicial()
@@ -399,29 +648,11 @@ def R3():
     girar(-105, 800)
     mover(467, 900)
     auxE(-600, 900)
-    mover(100, 900)
+    mover(110, 900)
     auxE(300, 900)
     mover(-400, 700)
 
-async def R4_async():
-    inicial()
-    mover(600, 800)
-    girar(28, 800)
-    mover(150, 600)
-    auxD(-300, 900)
-    mover(-220, 500)
-    girar(67, 800)
-    auxD(300, 900)
-    await multitask(moverlixo_async(900, -400), auxD_async(-300, 900))
-    girar(-48, 700)
-    mover(170, 800)
-    mover(-2000, 800)
-
 def R4():
-    inicial()
-    run_task(R4_async())
-
-def R5():
     inicial()
     mover(1450, 900)
     girar(39, 900)
@@ -434,38 +665,42 @@ def R5():
     auxD(-100, 900)
     mover(-100, 900)
     girar(-90, 900)
-    mover(200, 900)
-    girar(-10, 900)
-    mover(200, 900)
-    girar(9, 900)
-    mover(-180, 900)
-    mover(-32, 900)
-    girar_pivo(-200, 900, roda="esq")
-    mover(-240, 900)
-    girar(-140, 900)
-    mover(-200, 200)
-    mover(150, 900)
-    girar(100, 900)
-    mover(500, 900)
-    girar(180, 900)
+    mover(250, 900)
+    girar(-15, 900)
+    mover(167, 900)
+    girar(6, 900)
+    mover(-130, 900)
+    girar(-15, 800)
+    mover(-60, 900)
+    auxD(-300, 900)
+    girar_pivo(-230, 900, roda="esq")
+    mover(-310, 900)
+    girar(-165, 900)
+    mover(-342, 100)
+    mover(240, 900)
+    girar(138, 900)
+    mover(700, 900)
+    girar(175, 900)
     mover(3000, 900)
 
-def R6():
+def R5():
     inicial()
-    mover (1000 , 900)
-    girar (70, 900)
-    mover(707, 900)
-    girar(0, 600)
-    mover(320, 400)
-    mover(-90, 750)
-    girar (-95, 900)
-    mover(160, 900)
-    girar(-110, 500)
-    mover(44, 800)
-    auxE(-300, 100)
-    mover(100, 1000)
+    mover(950 , 900)
+    girar(70, 900)
+    mover(723, 900)
+    girar(0, 300)
+    mover(320, 200)
+    mover(-80, 750)
+    girar (-90, 900)
+    mover(170, 900)
+    girar(-110, 900)
+    mover(75, 800)
+    auxE(-300, 800)
+    mover(190, 900)
+    girar(195, 900)
+    mover(2000, 1000)
 
-def R7():
+def R6():
     inicial()
     mover(550, 900)
     auxE(260, 900)
@@ -487,20 +722,7 @@ def R7():
     mover(-125, 900)
     mover(150, 900)
     mover(-125, 900)
-    
-
-
-async def teste_async():
-    inicial()
-    mover(850, 900)
-    auxE(500, 900)
-    await multitask(moverlixo_async(-1000, 800), auxE_async(700, 900))
-    mover(-942, 1000)
-
-def teste_async67():
-    run_task(teste_async())
-
-def teste67():
+def teste_precisão():
     inicial()
 
 OPCOES_MENU = (
@@ -510,9 +732,7 @@ OPCOES_MENU = (
     ("R4", R4),
     ("R5", R5),
     ("R6", R6),
-    ("R7", R7),
-    ("R8", teste_async67),
-    ("R9", teste67),
+    ("R7", teste_precisão)
 )
 
 
@@ -520,15 +740,27 @@ def mostrar_opcao(indice):
     hub.display.number(indice + 1)
     print("Selecionado:", OPCOES_MENU[indice][0])
 
-
 def menu():
     indice = 0
+    aviso_tempo_esgotado = False
     hub.speaker.beep(500, 50)
     hub.system.set_stop_button(None)
     mostrar_opcao(indice)
     esperar_soltar_botoes()
 
     while True:
+        # Verifica o relogio mesmo quando o robô está parado no menu.
+        if round_iniciado and not round_esgotado:
+            avisar_tempo_round()
+            if cronometro_round.time() >= TEMPO_ROUND_MS:
+                marcar_round_esgotado()
+
+        if round_esgotado and not aviso_tempo_esgotado:
+            hub.speaker.beep(300, 300)
+            hub.display.char("0")
+            print("ROUND FLL encerrado. Tempo: 0:00")
+            aviso_tempo_esgotado = True
+
         botoes = hub.buttons.pressed()
 
         if Button.LEFT in botoes:
@@ -539,26 +771,43 @@ def menu():
         elif Button.RIGHT in botoes:
             nome, rotina = OPCOES_MENU[indice]
             esperar_soltar_botoes()
-            hub.display.char("P")
-            hub.system.set_stop_button(None)
-            print("Iniciando:", nome)
-            try:
-                rotina()
-                hub.speaker.beep(700, 50)
-            except VoltarMenu:
+
+            if round_esgotado:
                 parar_todos_motores()
-                hub.speaker.beep(300, 80)
-                print("Rotina interrompida. Voltando ao menu.")
-            mostrar_opcao(indice)
+                print("Tempo do round esgotado. Nenhuma outra run pode iniciar.")
+            else:
+                # O cronometro começa uma unica vez, quando a R1 e iniciada.
+                # Ao trocar para R2, R3... ou voltar ao menu, ele NÃO zera.
+                if nome == "R1":
+                    iniciar_cronometro_round()
+
+                hub.display.char("P")
+                hub.system.set_stop_button(None)
+                print("Iniciando:", nome)
+                try:
+                    rotina()
+                except VoltarMenu:
+                    parar_todos_motores()
+                    if round_esgotado:
+                        print("Round encerrado. Voltando ao menu.")
+                    else:
+                        print("Rotina interrompida. Voltando ao menu.")
+
+            if round_esgotado:
+                hub.display.char("0")
+            else:
+                mostrar_opcao(indice)
 
         elif Button.CENTER in botoes:
             parar_todos_motores()
             hub.system.set_stop_button(None)
             hub.display.char("S")
             esperar_soltar_botoes()
-            mostrar_opcao(indice)
+            if round_esgotado:
+                hub.display.char("0")
+            else:
+                mostrar_opcao(indice)
 
         wait(30)
-
 
 menu()
