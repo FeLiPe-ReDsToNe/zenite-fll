@@ -531,6 +531,66 @@ def girar(graus, velocidade_maxima):
         )
     )
     return abs(erro_final) <= 2.0
+
+def girar_pivo(graus, velocidade_maxima, roda="dir"):
+    # roda = a roda que se MOVE ("dir" ou "esq"). A outra fica travada como eixo do giro.
+    atualizar_target_heading(graus)
+
+    if roda == "dir":
+        motor_movel = motor_dir
+        motor_parado = motor_esq
+        sentido = 1
+    else:
+        motor_movel = motor_esq
+        motor_parado = motor_dir
+        sentido = -1
+
+    # Trava a roda que serve de pivô
+    motor_parado.hold()
+
+    angulo_inicial = hub.imu.heading()
+    erro_anterior = erro_angular(target_heading, angulo_inicial)
+
+    cronometro = StopWatch()
+
+    while True:
+        verificar_voltar_menu()
+
+        angulo_atual = hub.imu.heading()
+        erro = erro_angular(target_heading, angulo_atual)
+
+        if abs(erro) < 1.0 and abs(motor_movel.speed()) < 20:
+            break
+
+        tempo = cronometro.time()
+        cronometro.reset()
+
+        dt = max(0.01, min(0.1, tempo / 1000))
+
+        derivada = erro_angular(erro_anterior, erro) / dt
+        erro_anterior = erro
+
+        sinal_controle = (erro * KP_TURN) + (derivada * KD_TURN)
+
+        # Limite máximo de velocidade
+        sinal_controle = max(
+            -velocidade_maxima,
+            min(velocidade_maxima, sinal_controle)
+        )
+
+        # Velocidade mínima longe do alvo
+        if abs(sinal_controle) < 22 and abs(erro) >= 2.0:
+            sinal_controle = 22 if erro > 0 else -22
+
+        motor_movel.run(sentido * sinal_controle)
+
+        wait(10)
+
+    motor_esq.brake()
+    motor_dir.brake()
+
+    print('Giro pivô concluído em {}°'.format(hub.imu.heading()))
+
 def auxD(posicao, velocidade=-400):
     print(velocidade)
     if posicao == "inicio":
@@ -598,10 +658,11 @@ async def executar_tarefa_com_interrupcao(tarefa):
             print("Tarefa interrompida. Motores parados.")
 
 
-def R1():
+async def R1_async():
     inicial()
     mover(530, 367)
     mover(-1000, 999)
+    esperar(10000)
     esperar(100)
     mover(1300, 900)
     girar(-31, 800)
@@ -610,27 +671,33 @@ def R1():
     mover(-442, 900)
     girar(18, 900)
     mover(-1367, 900)
+    esperar(50000)
     esperar(150)
     inicial()
     mover(850, 900)
     auxE(500, 900)
-    multitask(moverlixo_async(-1000, 800), auxE_async(700, 900))
+    await multitask(moverlixo_async(-1000, 800), auxE_async(700, 900))
     mover(-942, 1000)
+def R1():
+    run_task(R1_async())
 
 def R2():
     inicial()
     mover(1804, 900)
-    auxE(-1040, 1000)
-    girar(50, 900)
-    auxE(-200, 900)
+    auxE(-90, 900)
+    girar(-10, 900)
     girar(0, 900)
-    auxE(-700, 1000)
-    girar(50, 900)
-    auxD(-132, 800)
-    mover(162, 900)
-    auxD(140, 200)
-    mover(-240, 800)
-    girar(0, 800)
+    auxE(-1200, 900)
+    girar(0, 900)
+    girar(60, 900)
+    girar(46, 900)
+    auxD(-150, 900)
+    mover(172, 900)
+    auxD(240, 900)
+    mover(-40, 900)
+    auxD(-100, 900)
+    mover(-100, 900)
+    girar(10, 900)
     mover(-2000, 900)
 
 def R3():
@@ -638,19 +705,21 @@ def R3():
     mover(1367, 900)
     girar(-55, 900)
     mover(100,930)
+    girar(-58, 900)
+    girar(-55, 900)
     mover(-70, 900)
     girar(0, 900)
-    mover(-250, 900)
+    mover(-240, 900)
     girar(-90, 900)
     mover(-137, 900)
     mover(1000, 900)
-    girar(-62, 600)
-    girar(-105, 800)
-    mover(467, 900)
-    auxE(-600, 900)
-    mover(110, 900)
-    auxE(300, 900)
-    mover(-400, 700)
+    girar(-58, 900)
+    girar(-102, 800)
+    mover(567, 900)
+    auxE(-700, 900)
+    mover(160, 900)
+    auxE(400, 900)
+    mover(-400, 1000)
 
 def R4():
     inicial()
@@ -665,13 +734,13 @@ def R4():
     auxD(-100, 900)
     mover(-100, 900)
     girar(-90, 900)
-    mover(250, 900)
+    mover(220, 900)
     girar(-15, 900)
-    mover(167, 900)
+    mover(170, 900)
     girar(6, 900)
     mover(-130, 900)
     girar(-15, 800)
-    mover(-60, 900)
+    mover(-40, 900)
     auxD(-300, 900)
     girar_pivo(-230, 900, roda="esq")
     mover(-310, 900)
@@ -685,20 +754,18 @@ def R4():
 
 def R5():
     inicial()
-    mover(950 , 900)
-    girar(70, 900)
-    mover(723, 900)
+    mover(1000 , 900)
+    girar(67, 900)
+    mover(737, 900)
     girar(0, 300)
     mover(320, 200)
-    mover(-80, 750)
+    mover(-110, 750)
     girar (-90, 900)
-    mover(170, 900)
-    girar(-110, 900)
-    mover(75, 800)
+    mover(300, 900)
+    girar(-140, 900)
+    mover(123, 800)
     auxE(-300, 800)
-    mover(190, 900)
-    girar(195, 900)
-    mover(2000, 1000)
+    mover(1000, 1000)
 
 def R6():
     inicial()
