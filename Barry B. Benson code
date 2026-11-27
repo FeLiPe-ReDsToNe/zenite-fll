@@ -1,7 +1,7 @@
 
 from pybricks.hubs import PrimeHub
 from pybricks.pupdevices import Motor, ColorSensor
-from pybricks.parameters import Port, Direction, Stop, Button
+from pybricks.parameters import Port, Direction, Stop, Button, Color
 from pybricks.tools import StopWatch, wait, multitask, run_task
 
 hub = PrimeHub()
@@ -659,54 +659,50 @@ async def executar_tarefa_com_interrupcao(tarefa):
 
 
 async def R1_async():
+    hub.light.on(Color.YELLOW)
     inicial()
     mover(530, 367)
     mover(-1000, 999)
-    esperar(10000)
-    esperar(100)
+    esperar(1000)
     mover(1300, 900)
     girar(-31, 800)
-    mover(422, 550)
+    mover(432, 550)
     auxD(-400, 900)
     mover(-442, 900)
     girar(18, 900)
     mover(-1367, 900)
-    esperar(50000)
-    esperar(150)
+    esperar(6000)
     inicial()
+    auxE(300, 900)
     mover(850, 900)
-    auxE(500, 900)
-    await multitask(moverlixo_async(-1000, 800), auxE_async(700, 900))
+    auxE(-500, 900)
+    await multitask(moverlixo_async(-1000, 800), auxE_async(-700, 900))
     mover(-942, 1000)
 def R1():
     run_task(R1_async())
 
 def R2():
+    hub.light.on(Color.BLUE)
     inicial()
-    mover(1804, 900)
+    auxE(40, 900)
+    mover(1820, 900)
     auxE(-90, 900)
-    girar(-10, 900)
-    girar(0, 900)
-    auxE(-1200, 900)
-    girar(0, 900)
-    girar(60, 900)
-    girar(46, 900)
-    auxD(-150, 900)
-    mover(172, 900)
-    auxD(240, 900)
-    mover(-40, 900)
-    auxD(-100, 900)
-    mover(-100, 900)
-    girar(10, 900)
-    mover(-2000, 900)
+    girar(13, 900)
+    auxE(-400, 900)
+    mover(100, 900)
+    mover(-20, 900)
+    auxE(-200, 900)
+    mover(-2000, 1000)
+
 
 def R3():
+    hub.light.on(Color.MAGENTA)
     inicial()
     mover(1367, 900)
     girar(-55, 900)
     mover(100,930)
     girar(-58, 900)
-    girar(-55, 900)
+    girar(-51, 900)
     mover(-70, 900)
     girar(0, 900)
     mover(-240, 900)
@@ -722,52 +718,53 @@ def R3():
     mover(-400, 1000)
 
 def R4():
+    hub.light.on(Color.GREEN)
     inicial()
-    mover(1450, 900)
-    girar(39, 900)
+    mover(1463, 900)
+    girar(38.5, 900)
     mover(350, 900)
-    auxD(150, 900)
-    auxD(-150, 900)
+    auxD(260, 900)
+    auxD(-130, 900)
     girar(0, 900)
     mover(-400, 900)
-    mover(250, 900)
+    mover(300, 900)
     auxD(-100, 900)
     mover(-100, 900)
     girar(-90, 900)
     mover(220, 900)
     girar(-15, 900)
-    mover(170, 900)
+    mover(130, 900)
     girar(6, 900)
     mover(-130, 900)
     girar(-15, 800)
-    mover(-40, 900)
+    mover(-50, 900)
     auxD(-300, 900)
-    girar_pivo(-230, 900, roda="esq")
-    mover(-310, 900)
-    girar(-165, 900)
+    girar_pivo(-240, 900, roda="esq")
+    mover(-380, 900)
+    girar(-125, 900)
     mover(-342, 100)
     mover(240, 900)
-    girar(138, 900)
-    mover(700, 900)
-    girar(175, 900)
-    mover(3000, 900)
+    girar(135, 900)
+    mover(2000, 1000)
 
 def R5():
+    hub.light.on(Color.CYAN)
     inicial()
-    mover(1000 , 900)
-    girar(67, 900)
+    mover(1050 , 900)
+    girar(69, 900)
     mover(737, 900)
-    girar(0, 300)
+    girar(2, 300)
     mover(320, 200)
-    mover(-110, 750)
+    mover(-156, 750)
     girar (-90, 900)
-    mover(300, 900)
+    mover(310, 900)
     girar(-140, 900)
     mover(123, 800)
     auxE(-300, 800)
-    mover(1000, 1000)
+    mover(1800, 1000)
 
 def R6():
+    hub.light.on(Color.RED)
     inicial()
     mover(550, 900)
     auxE(260, 900)
@@ -789,8 +786,15 @@ def R6():
     mover(-125, 900)
     mover(150, 900)
     mover(-125, 900)
-def teste_precisão():
+
+async def teste_precisãoa():
     inicial()
+    auxE(300, 900)
+    mover(849, 900)
+    await multitask(moverlixo_async(-200, 800), auxE_async(-900, 900))
+    mover(-942, 1000)
+def teste_precisão():
+    run_task(teste_precisãoa())
 
 OPCOES_MENU = (
     ("R1", R1),
@@ -847,6 +851,7 @@ def menu():
                 # Ao trocar para R2, R3... ou voltar ao menu, ele NÃO zera.
                 if nome == "R1":
                     iniciar_cronometro_round()
+                    hub.light.on(Color.YELLOW)
 
                 hub.display.char("P")
                 hub.system.set_stop_button(None)
